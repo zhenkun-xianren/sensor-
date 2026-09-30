@@ -1,5 +1,6 @@
 #include "bsp_gpio.h"
 #include "bsp_ir.h"
+#include "bsp_rs485.h"
 #include "stm32f103xb.h"
 
 static volatile uint32_t s_fault_code; // 最近一次处理器异常代码，供 SWD 调试查看。
@@ -62,4 +63,12 @@ void UsageFault_Handler(void)
 void EXTI9_5_IRQHandler(void)
 {
     BSP_Ir_IrqHandler();
+}
+
+/**
+ * @brief 转交 USART2 接收中断处理 RS485 数据。
+ */
+void USART2_IRQHandler(void)
+{
+    BSP_RS485_IrqHandler();
 }
