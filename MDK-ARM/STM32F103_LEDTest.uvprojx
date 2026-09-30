@@ -567,16 +567,39 @@
             </File>
           </Files>
         </Group>
-          <Group>
-            <GroupName>Board Support/RS485</GroupName>
-            <Files>
-              <File>
-                <FileName>bsp_rs485.c</FileName>
-                <FileType>1</FileType>
-                <FilePath>../Src/bsp_rs485.c</FilePath>
-              </File>
-            </Files>
-          </Group>
+        <Group>
+          <GroupName>Device/Modbus</GroupName>
+          <Files>
+            <File>
+              <FileName>dev_modbus.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Device/src/dev_modbus.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Port/Modbus</GroupName>
+          <Files>
+            <File>
+              <FileName>port_modbus.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Src/port_modbus.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Board Support/RS485</GroupName>
+          <Files>
+            <File>
+              <FileName>bsp_rs485.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Src/bsp_rs485.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>::CMSIS</GroupName>
+        </Group>
         <Group>
           <GroupName>::CMSIS</GroupName>
         </Group>
@@ -1133,6 +1156,49 @@
               <FilePath>../Src/bsp_ir.c</FilePath>
             </File>
           </Files>
+        </Group>
+        <Group>
+          <GroupName>Board Support/Byte Ring</GroupName>
+          <Files>
+            <File>
+              <FileName>bsp_byte_ring.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Src/bsp_byte_ring.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Device/Modbus</GroupName>
+          <Files>
+            <File>
+              <FileName>dev_modbus.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Device/src/dev_modbus.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Port/Modbus</GroupName>
+          <Files>
+            <File>
+              <FileName>port_modbus.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Src/port_modbus.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Board Support/RS485</GroupName>
+          <Files>
+            <File>
+              <FileName>bsp_rs485.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Src/bsp_rs485.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>::CMSIS</GroupName>
         </Group>
         <Group>
           <GroupName>::CMSIS</GroupName>
