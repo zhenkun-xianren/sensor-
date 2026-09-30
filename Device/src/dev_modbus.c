@@ -4,6 +4,19 @@
 static DevModbus s_modbus; // 对外提供的静态 Modbus Device 接口。
 
 /**
+ * @brief 初始化 Modbus 设备依赖的 Port 层 RS485 接口。
+ * @param self 接收初始化请求的设备对象。
+ * @return 初始化成功返回 DEV_MODBUS_OK，否则返回底层 I/O 错误。
+ */
+static DevModbusStatus dev_modbus_init(DevModbus *self)
+{
+    if (self != &s_modbus) {
+        return DEV_MODBUS_ERROR_ARGUMENT;
+    }
+    return PORT_Modbus_Init() != 0U ? DEV_MODBUS_OK : DEV_MODBUS_ERROR_IO;
+}
+
+/**
  * @brief 将单寄存器写请求交由 Port 层构造为 RTU 帧。
  * @param self 接收请求的设备对象。
  * @param slaveAddress 从站地址，范围为 1 至 247。
@@ -47,6 +60,7 @@ static DevModbusStatus dev_modbus_build_write_request(DevModbus *self,
  */
 DevModbus *GetModbus(void)
 {
+    s_modbus.init = dev_modbus_init;
     s_modbus.buildWriteHoldingRegisterRequest = dev_modbus_build_write_request;
     return &s_modbus;
 }

@@ -1,4 +1,14 @@
 #include "port_modbus.h"
+#include "bsp_rs485.h"
+
+/**
+ * @brief 初始化 Modbus RTU 端口使用的 USART2 RS485 接口。
+ * @return 初始化成功返回 1，底层串口配置失败返回 0。
+ */
+uint8_t PORT_Modbus_Init(void)
+{
+    return BSP_RS485_Init();
+}
 
 /**
  * @brief 计算 Modbus RTU 使用的 CRC-16。

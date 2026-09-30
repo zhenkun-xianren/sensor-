@@ -13,6 +13,12 @@
 #define PORT_MODBUS_CRC_BITS_PER_BYTE       8U
 
 /**
+ * @brief 初始化 RS485 板级串口。
+ * @return 初始化成功返回 1，底层串口配置失败返回 0。
+ */
+uint8_t PORT_Modbus_Init(void);
+
+/**
  * @brief 构造 Modbus RTU 功能码 0x06 的单寄存器写请求帧。
  * @param slaveAddress 从站地址，范围为 1 至 247。
  * @param registerAddress 目标保持寄存器地址。
