@@ -7,6 +7,9 @@
 #define BSP_GPIO_PA_OPTOCOUPLER_PIN            1U
 #define BSP_GPIO_PA_RELAY_PIN                  5U
 #define BSP_GPIO_PA_BUZZER_PIN                 6U
+#define BSP_GPIO_PA_RS485_TX_PIN               2U
+#define BSP_GPIO_PA_RS485_RX_PIN               3U
+#define BSP_GPIO_PA_RS485_DIR_PIN              4U
 #define BSP_GPIO_PB_POWER_LED_PIN             14U
 #define BSP_GPIO_PB_WARNING_LED_PIN           15U
 #define BSP_GPIO_PA_SAFE_HIGH_MASK            (1UL << BSP_GPIO_PA_OPTOCOUPLER_PIN)

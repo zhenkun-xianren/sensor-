@@ -567,6 +567,16 @@
             </File>
           </Files>
         </Group>
+          <Group>
+            <GroupName>Board Support/RS485</GroupName>
+            <Files>
+              <File>
+                <FileName>bsp_rs485.c</FileName>
+                <FileType>1</FileType>
+                <FilePath>../Src/bsp_rs485.c</FilePath>
+              </File>
+            </Files>
+          </Group>
         <Group>
           <GroupName>::CMSIS</GroupName>
         </Group>
