@@ -558,6 +558,16 @@
           </Files>
         </Group>
         <Group>
+          <GroupName>Board Support/Byte Ring</GroupName>
+          <Files>
+            <File>
+              <FileName>bsp_byte_ring.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Src/bsp_byte_ring.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
           <GroupName>::CMSIS</GroupName>
         </Group>
       </Groups>
