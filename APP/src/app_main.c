@@ -2,12 +2,14 @@
 #include "app_buzzer.h"
 #include "app_display.h"
 #include "app_ir_relay.h"
+#include "app_modbus.h"
 #include "app_system.h"
 #include "dev_modbus.h"
 #include "FreeRTOS.h"
 #include "task.h"
 
 volatile DevModbusStatus g_app_modbus_init_status; // Modbus/RS485 初始化结果，仅供调试观察；失败不阻止主应用启动。
+volatile uint8_t g_app_modbus_framework_start_status; // Modbus APP 任务和定时器启动状态；失败不阻止阶段 06 运行。
 
 /**
  * @brief 启动已注册的 APP 模块并运行 FreeRTOS 调度器。
@@ -37,6 +39,7 @@ uint8_t App_Main_Run(void)
     } else {
         g_app_modbus_init_status = modbus->init(modbus);
     }
+    g_app_modbus_framework_start_status = App_Modbus_Start();
 
     if (AppBuzzer_StartBootDemo() == 0U) {
         return 0U;
