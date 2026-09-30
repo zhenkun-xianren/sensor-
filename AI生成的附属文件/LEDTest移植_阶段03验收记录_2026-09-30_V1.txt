@@ -1,0 +1,27 @@
+LEDTest 移植阶段 03：FreeRTOS 接入验收记录（待上板确认）
+日期：2026-09-30
+工程：D:\Stm32 product\STM32F103_LEDTest\MDK-ARM\STM32F103_LEDTest.uvprojx
+默认 Target：STM32F103_LEDTest_V5，ARMCC V5.06 update 6 (build 750)。根据用户最新要求，V6 Target 保留作手动切换，本阶段默认不构建和交付 V6。
+
+本阶段改动：
+1. 从现有甲烷工程复制 FreeRTOS 内核源码、所需头文件、LICENSE、heap_4，以及 RVDS/ARM_CM3 和 GCC/ARM_CM3 两种备用移植层到本工程 Middleware/FreeRTOS。工程实际编译 freertos_port_select.c 一份，由 FREERTOS_ARM_COMPILER=5 选择 RVDS port.c；V6 的 GCC port.c 不进入 V5 编译。
+2. 新增工程内 FreeRTOSConfig.h，配置 64 MHz HCLK、1000 Hz Tick、静态任务内存和故障 Hook。SysTick、SVC、PendSV 由 FreeRTOS 移植层处理；Tick Hook 每毫秒推进原有 BSP 毫秒计数。调度器启动前 SysTick 保持关闭。
+3. 新增 APP 总入口及独立的系统任务模块；系统任务每秒更新 g_app_system_heartbeat，供 SWD 观察调度器持续运行。该任务不操作 LED、继电器、蜂鸣器和外部接口。PB14 POWER、PB15 WARNING 仍持续常亮，PA1/4/5/6 仍保持阶段 02 的安全初值。
+
+编译错误及修复：首次接入时，V5 Target 错把 GCC/ARM_CM3/port.c 与 RVDS/ARM_CM3/port.c 同时编入，ARMCC 在 GCC 汇编语法处报 4 个错误、7 个警告。已改为只编译 freertos_port_select.c，由目标宏展开唯一的 RVDS 实现。
+构建结果：正式 V5 Target 重建、链接并生成 HEX；0 Error(s)，0 Warning(s)。Code=7936 B，RO=292 B，RW=140 B，ZI=5500 B。
+内存配置：IROM 64 KiB、IRAM 20 KiB；本阶段 Code+RO=8228 B，RW+ZI=5640 B。
+构建日志：D:\Stm32 product\STM32F103_LEDTest\MDK-ARM\stage03_v5_rebuild.log（本地构建生成物，不纳入 Git）。
+HEX：D:\Stm32 product\STM32F103_LEDTest\MDK-ARM\STM32F103_LEDTest_V5\STM32F103_LEDTest_V5.hex
+HEX SHA-256：3AEEAE6EB1F1AB9635781D5813AA5CDD1776E26729ACD433C0B814FC81CF7632
+Intel HEX：校验和通过；数据地址 0x08000000–0x080020AF，数据 8368 B。
+链接映射：SVC_Handler、PendSV_Handler、SysTick_Handler 均来自 freertos_port_select.o；g_app_system_heartbeat 位于 0x20000010。
+
+待用户上板验证：
+1. 仅烧录以上 V5 HEX。完全断电再上电 3 次，每次观察 POWER、WARNING 两灯持续常亮至少 60 秒，不交替闪烁或中途熄灭。
+2. 蜂鸣器不应鸣叫，继电器不应吸合；如原先验证过现场输出，也应保持关闭状态。
+3. 如可使用 SWD 调试器，在运行状态观察全局变量 g_app_system_heartbeat，确认它约每秒递增。两灯常亮只能证明启动与指示状态，心跳递增用于确认 FreeRTOS 任务实际在运行。
+4. 请反馈 3 次冷启动的灯态及心跳观察结果；若异常，说明具体出现时间与现象。
+
+用户上板反馈：g_app_system_heartbeat 每秒递增；V5 固件完成 3 次完全断电重启，每次重新上电后两灯连续常亮至少 60 秒，蜂鸣器不响、继电器不吸合。阶段 03 验收通过。
+Git：验收通过后保存至 codex/methane-ledtest-port，并标记 methane-port-03；随后进入阶段 04。

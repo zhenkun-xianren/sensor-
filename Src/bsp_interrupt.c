@@ -1,5 +1,4 @@
 #include "bsp_gpio.h"
-#include "bsp_time.h"
 #include "stm32f103xb.h"
 
 static volatile uint32_t s_fault_code; // 最近一次处理器异常代码，供 SWD 调试查看。
@@ -54,12 +53,4 @@ void BusFault_Handler(void)
 void UsageFault_Handler(void)
 {
     fault_stop(5U);
-}
-
-/**
- * @brief 为板级时基处理每毫秒一次的 SysTick 中断。
- */
-void SysTick_Handler(void)
-{
-    BSP_Time_OnSysTick();
 }

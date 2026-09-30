@@ -10,7 +10,7 @@
       <TargetName>STM32F103_LEDTest_V5</TargetName>
       <ToolsetNumber>0x4</ToolsetNumber>
       <ToolsetName>ARM-ADS</ToolsetName>
-      <pCCUsed>6090000::V6.9::.\ARMCLANG</pCCUsed>
+      <pCCUsed>5060750::V5.06 update 6 (build 750)::ARMCC</pCCUsed>
       <uAC6>0</uAC6>
       <TargetOption>
         <TargetCommonOption>
@@ -336,7 +336,7 @@
               <MiscControls></MiscControls>
               <Define>STM32F103xB,FREERTOS_ARM_COMPILER=5</Define>
               <Undefine></Undefine>
-              <IncludePath>../Inc;../Drivers/CMSIS/Device/ST/STM32F1xx/Include;../Drivers/CMSIS/Include</IncludePath>
+              <IncludePath>../Inc;../Drivers/CMSIS/Device/ST/STM32F1xx/Include;../Drivers/CMSIS/Include;../APP/inc;../Middleware/FreeRTOS/include;../Middleware/FreeRTOS/portable/RVDS/ARM_CM3</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -424,6 +424,71 @@
               <FileName>system_stm32f1xx.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Src/system_stm32f1xx.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Application/FreeRTOS</GroupName>
+          <Files>
+            <File>
+              <FileName>bsp_freertos.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Src/bsp_freertos.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_main.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/src/app_main.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_system.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/src/app_system.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Middleware/FreeRTOS/Core</GroupName>
+          <Files>
+            <File>
+              <FileName>tasks.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Middleware/FreeRTOS/tasks.c</FilePath>
+            </File>
+            <File>
+              <FileName>list.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Middleware/FreeRTOS/list.c</FilePath>
+            </File>
+            <File>
+              <FileName>queue.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Middleware/FreeRTOS/queue.c</FilePath>
+            </File>
+            <File>
+              <FileName>timers.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Middleware/FreeRTOS/timers.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Middleware/FreeRTOS/Port</GroupName>
+          <Files>
+            <File>
+              <FileName>freertos_port_select.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Middleware/FreeRTOS/freertos_port_select.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Middleware/FreeRTOS/Memory</GroupName>
+          <Files>
+            <File>
+              <FileName>heap_4.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Middleware/FreeRTOS/portable/MemMang/heap_4.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -763,7 +828,7 @@
               <MiscControls></MiscControls>
               <Define>STM32F103xB,FREERTOS_ARM_COMPILER=6</Define>
               <Undefine></Undefine>
-              <IncludePath>../Inc;../Drivers/CMSIS/Device/ST/STM32F1xx/Include;../Drivers/CMSIS/Include</IncludePath>
+              <IncludePath>../Inc;../Drivers/CMSIS/Device/ST/STM32F1xx/Include;../Drivers/CMSIS/Include;../APP/inc;../Middleware/FreeRTOS/include;../Middleware/FreeRTOS/portable/GCC/ARM_CM3</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -851,6 +916,71 @@
               <FileName>system_stm32f1xx.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Src/system_stm32f1xx.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Application/FreeRTOS</GroupName>
+          <Files>
+            <File>
+              <FileName>bsp_freertos.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Src/bsp_freertos.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_main.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/src/app_main.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_system.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/src/app_system.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Middleware/FreeRTOS/Core</GroupName>
+          <Files>
+            <File>
+              <FileName>tasks.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Middleware/FreeRTOS/tasks.c</FilePath>
+            </File>
+            <File>
+              <FileName>list.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Middleware/FreeRTOS/list.c</FilePath>
+            </File>
+            <File>
+              <FileName>queue.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Middleware/FreeRTOS/queue.c</FilePath>
+            </File>
+            <File>
+              <FileName>timers.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Middleware/FreeRTOS/timers.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Middleware/FreeRTOS/Port</GroupName>
+          <Files>
+            <File>
+              <FileName>freertos_port_select.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Middleware/FreeRTOS/freertos_port_select.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Middleware/FreeRTOS/Memory</GroupName>
+          <Files>
+            <File>
+              <FileName>heap_4.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Middleware/FreeRTOS/portable/MemMang/heap_4.c</FilePath>
             </File>
           </Files>
         </Group>

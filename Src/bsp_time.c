@@ -3,13 +3,11 @@
 #include "stm32f103xb.h"
 
 #define BSP_TIME_SYSTICK_RELOAD_MAX 0x00FFFFFFUL
-#define BSP_TIME_SYSTICK_PRIORITY   15UL
-
 static volatile uint32_t s_tick_ms; // 自板级时基启动以来累计的毫秒数。
 
 /**
- * @brief 将 SysTick 配为每毫秒一次的板级时基。
- * @return 装载值有效并配置完成返回 1，否则返回 0。
+ * @brief 校验每毫秒的 SysTick 装载值，并将 SysTick 留给 FreeRTOS 启动。
+ * @return 装载值有效返回 1，否则返回 0。
  */
 uint8_t BSP_Time_Init(void)
 {
@@ -22,12 +20,9 @@ uint8_t BSP_Time_Init(void)
     }
 
     SysTick->CTRL = 0U;
-    SysTick->LOAD = ticks_per_ms - 1U;
     SysTick->VAL = 0U;
     s_tick_ms = 0U;
-    NVIC_SetPriority(SysTick_IRQn, BSP_TIME_SYSTICK_PRIORITY);
-    SysTick->CTRL = SysTick_CTRL_CLKSOURCE_Msk |
-                    SysTick_CTRL_TICKINT_Msk | SysTick_CTRL_ENABLE_Msk;
+    /* 调度器启动前保持 SysTick 关闭，避免异常入口先于 FreeRTOS 初始化执行。 */
     return 1U;
 }
 

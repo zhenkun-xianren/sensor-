@@ -1,5 +1,5 @@
 #include "bsp_board.h"
-
+#include "app_main.h"
 #include "bsp_gpio.h"
 #include "bsp_time.h"
 #include "stm32f103xb.h"
@@ -8,8 +8,8 @@
 static volatile BspBoardClockStatus s_clock_status; // 启动时钟配置状态，供 SWD 调试查看。
 
 /**
- * @brief 启动手写板级初始化并保持两路指示灯持续点亮。
- * @return 正常运行时不会返回。
+ * @brief 完成手写板级初始化，随后启动 FreeRTOS 应用。
+ * @return 正常调度时不会返回；启动失败停在故障状态。
  */
 int main(void)
 {
@@ -35,7 +35,11 @@ int main(void)
         for (;;) { }
     }
 
-    for (;;) {
-        __WFI();
+    if (App_Main_Run() == 0U) {
+        BSP_Gpio_IndicateFault();
+        __disable_irq();
+        for (;;) { }
     }
+
+    for (;;) { }
 }

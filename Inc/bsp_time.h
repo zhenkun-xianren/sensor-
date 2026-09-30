@@ -6,8 +6,8 @@
 #define BSP_TIME_TICK_HZ 1000UL
 
 /**
- * @brief 将 SysTick 配为每毫秒一次的板级时基。
- * @return 装载值有效并配置完成返回 1，否则返回 0。
+ * @brief 校验每毫秒的 SysTick 装载值，保留 FreeRTOS 的 SysTick 所有权。
+ * @return 装载值有效返回 1，否则返回 0。
  */
 uint8_t BSP_Time_Init(void);
 
