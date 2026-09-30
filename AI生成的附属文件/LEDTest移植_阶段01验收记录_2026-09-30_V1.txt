@@ -1,0 +1,15 @@
+LEDTest 移植阶段 01 手写启动验收记录（待上板确认）
+日期：2026-09-30
+工程：D:\Stm32 product\STM32F103_LEDTest\MDK-ARM\STM32F103_LEDTest.uvprojx
+Target：STM32F103_LEDTest（ARMClang V6.9；V5/V6 双 Target 在阶段 02 建立）
+代码：手写 firmware_main、bsp_board、bsp_gpio、bsp_time、bsp_interrupt；芯片启动文件与 CMSIS 系统文件保留。
+正式构建：CubeMX 的 main/gpio/stm32f1xx_it/hal_msp 和 HAL 驱动均不参与；不调用 HAL_Init、MX_GPIO_Init、SystemClock_Config 等生成函数。
+时钟：HSI 8 MHz / 2 × PLL 16 = SYSCLK/HCLK 64 MHz；PCLK1 32 MHz；PCLK2 64 MHz；SysTick 1 ms。
+LED：POWER PB14 与 WARNING PB15 均为低电平点亮；正常运行两灯持续常亮。时钟、时基或异常故障时 WARNING 熄灭用于定位。
+构建结果：正式 Target 重建、链接并生成 HEX；0 Error(s)，0 Warning(s)。Code 958 B，RO 286 B，RW 4 B，ZI 1652 B。
+HEX：D:\Stm32 product\STM32F103_LEDTest\MDK-ARM\STM32F103_LEDTest\STM32F103_LEDTest.hex
+HEX SHA-256：731C367FF6DD6EB52B932EF52521E307F04E752148F89021EEAE3F1D49EE651C
+Intel HEX：校验和通过；数据地址 0x08000000–0x080004E7，数据 1256 B。
+板上验收：请烧录以上 HEX；完全断电再上电 3 次，每次观察两灯连续常亮至少 60 秒。无需连接其他外设。若只有 POWER 亮、WARNING 灭，请报告，表示启动或异常路径触发。
+用户反馈：用户确认阶段 01 的 HEX 已烧录；3 次完全断电重启后，每次 POWER、WARNING 两灯均连续常亮至少 60 秒，阶段 01 通过。
+Git：用户已确认阶段 01 通过，准备提交并推送 codex/methane-ledtest-port 与 methane-port-01 tag。

@@ -5,5 +5,6 @@
 /MDK-ARM/*.lst
 /MDK-ARM/*.log
 /MDK-ARM/*.uvguix.*
+/MDK-ARM/*EventRecorderStub.scvd
 /MDK-ARM/*.Bak
 /MDK-ARM/*.bak
