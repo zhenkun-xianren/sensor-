@@ -1,0 +1,27 @@
+LEDTest 移植阶段 05：蜂鸣器与执行器验收记录（待上板确认）
+日期：2026-09-30
+工程：D:\Stm32 product\STM32F103_LEDTest\MDK-ARM\STM32F103_LEDTest.uvprojx
+默认 Target：STM32F103_LEDTest_V5，ARMCC V5.06 update 6 (build 750)。V6 Target 保留供手动切换，本阶段未构建 V6。
+上阶段：数码管阶段 04 已获用户上板通过，commit 32d3cb2、tag methane-port-04 已推送。
+
+来源与适配：
+1. 执行器和蜂鸣器接口参照 D:\desktop\internship_program\驱动程序\驱动程序\执行器\继电器_光耦_蜂鸣器_LED\README.md 和现有 Methane Sensor 工程，将 Device、Port、BSP、APP 源文件复制到 LEDTest 工程内，正式构建不依赖外部绝对路径。
+2. PA6 高电平使蜂鸣器鸣叫，低电平关闭；PA5 低电平使继电器释放；PA1 高电平保持 24V_IO_OUT 关闭。PB14、PB15 低电平点亮两灯，GPIO 初值及锁存电平由手写 BSP 检查。
+3. FreeRTOS 静态软件定时器在调度器启动约 0.5–1.0 秒和 1.5–2.0 秒各鸣叫一次，每次约 0.5 秒；约 2.2 秒后自动关闭，此后保持安静。计时从调度器实际启动算起，观察时允许少量调度误差。
+4. 上电演示状态可在 SWD 中观察 g_app_buzzer_demo_status：0 待启动、1 进行中、2 完成、3 错误；g_app_system_heartbeat 仍应约每秒自增。显示仍为 0000，两灯应持续常亮。
+5. 执行器 Port/BSP 的设置接口返回 GPIO 输出检查结果；初始化、定时器创建与启停失败会返回错误。上电演示仅控制蜂鸣器，不主动吸合继电器或开启隔离输出。
+
+构建证据：正式 V5 Target 完整重建，app_buzzer.c、port_actuator.c、bsp_actuator.c 均参与编译，完成链接并生成 HEX；0 Error(s)，0 Warning(s)。Code=11280 B，RO=332 B，RW=172 B，ZI=5668 B。
+内存配置：IROM 64 KiB、IRAM 20 KiB；本阶段 Code+RO=11612 B，RW+ZI=5840 B。
+构建日志：D:\Stm32 product\STM32F103_LEDTest\MDK-ARM\stage05_v5_rebuild.log（本地生成物，不纳入 Git）。
+HEX：D:\Stm32 product\STM32F103_LEDTest\MDK-ARM\STM32F103_LEDTest_V5\STM32F103_LEDTest_V5.hex
+HEX SHA-256：26C753AE4EA8C7026F6D9D4EBE28FBBA876A404CAA88F22DC6C61E267929F9FE
+Intel HEX：校验和通过；数据地址 0x08000000–0x08002E07，数据 11784 B。
+
+待用户上板验证：
+1. 仅烧录上述 V5 HEX。每次完全断电、重新上电后，POWER 与 WARNING 两灯立即点亮并持续常亮；四位数码管稳定显示 0000，无明显闪烁。
+2. 仔细听上电后蜂鸣器短鸣两次，然后自动停止；之后观察至少 60 秒不再鸣叫。继电器始终不吸合，24V_IO_OUT 保持关闭。
+3. 完成 3 次完全断电重启，每次均观察两灯、数码管、鸣叫次数、停止状态和安全输出；如使用 SWD，可检查演示状态变为 2、心跳约每秒增加。
+4. 请反馈三次启动的两灯、0000、蜂鸣器两次短鸣及停止、继电器和现场输出的实际现象。如鸣叫次数或节奏异常，请记录具体次数和持续时间。
+
+Git：本阶段等待用户上板验收；通过后再提交源码和本记录，推送 codex/methane-ledtest-port 并标记 methane-port-05，再进入阶段 06。

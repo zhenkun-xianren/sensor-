@@ -518,6 +518,26 @@
           </Files>
         </Group>
         <Group>
+          <GroupName>Application/Buzzer</GroupName>
+          <Files>
+            <File>
+              <FileName>app_buzzer.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/src/app_buzzer.c</FilePath>
+            </File>
+            <File>
+              <FileName>port_actuator.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Src/port_actuator.c</FilePath>
+            </File>
+            <File>
+              <FileName>bsp_actuator.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Src/bsp_actuator.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
           <GroupName>::CMSIS</GroupName>
         </Group>
       </Groups>
@@ -1031,6 +1051,26 @@
               <FileName>bsp_display_map.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Src/bsp_display_map.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Application/Buzzer</GroupName>
+          <Files>
+            <File>
+              <FileName>app_buzzer.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/src/app_buzzer.c</FilePath>
+            </File>
+            <File>
+              <FileName>port_actuator.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Src/port_actuator.c</FilePath>
+            </File>
+            <File>
+              <FileName>bsp_actuator.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Src/bsp_actuator.c</FilePath>
             </File>
           </Files>
         </Group>

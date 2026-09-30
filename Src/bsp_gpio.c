@@ -1,8 +1,8 @@
 #include "bsp_gpio.h"
 #include "stm32f103xb.h"
 
-#define BSP_GPIO_POWER_LED_PIN        14UL
-#define BSP_GPIO_WARNING_LED_PIN      15UL
+#define BSP_GPIO_POWER_LED_PIN        BSP_GPIO_PB_POWER_LED_PIN
+#define BSP_GPIO_WARNING_LED_PIN      BSP_GPIO_PB_WARNING_LED_PIN
 #define BSP_GPIO_LED_MASK             ((1UL << BSP_GPIO_POWER_LED_PIN) | \
                                        (1UL << BSP_GPIO_WARNING_LED_PIN))
 #define BSP_GPIO_CRH_FIRST_PIN        8UL
@@ -12,11 +12,11 @@
 #define BSP_GPIO_CRH_SHIFT(pin)       (((pin) - BSP_GPIO_CRH_FIRST_PIN) * \
                                        BSP_GPIO_BITS_PER_PIN)
 #define BSP_GPIO_CRL_SHIFT(pin)       ((pin) * BSP_GPIO_BITS_PER_PIN)
-#define BSP_GPIO_OPTO_PIN             1UL
+#define BSP_GPIO_OPTO_PIN             BSP_GPIO_PA_OPTOCOUPLER_PIN
 #define BSP_GPIO_RS485_DIR_PIN        4UL
-#define BSP_GPIO_RELAY_PIN            5UL
-#define BSP_GPIO_BUZZER_PIN           6UL
-#define BSP_GPIO_SAFE_HIGH_MASK       (1UL << BSP_GPIO_OPTO_PIN)
+#define BSP_GPIO_RELAY_PIN            BSP_GPIO_PA_RELAY_PIN
+#define BSP_GPIO_BUZZER_PIN           BSP_GPIO_PA_BUZZER_PIN
+#define BSP_GPIO_SAFE_HIGH_MASK       BSP_GPIO_PA_SAFE_HIGH_MASK
 #define BSP_GPIO_SAFE_LOW_MASK        ((1UL << BSP_GPIO_RS485_DIR_PIN) | \
                                        (1UL << BSP_GPIO_RELAY_PIN) | \
                                        (1UL << BSP_GPIO_BUZZER_PIN))

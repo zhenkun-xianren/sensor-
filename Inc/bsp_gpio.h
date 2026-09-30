@@ -4,6 +4,12 @@
 #include <stdint.h>
 
 #define BSP_GPIO_BSRR_RESET_SHIFT            16U
+#define BSP_GPIO_PA_OPTOCOUPLER_PIN            1U
+#define BSP_GPIO_PA_RELAY_PIN                  5U
+#define BSP_GPIO_PA_BUZZER_PIN                 6U
+#define BSP_GPIO_PB_POWER_LED_PIN             14U
+#define BSP_GPIO_PB_WARNING_LED_PIN           15U
+#define BSP_GPIO_PA_SAFE_HIGH_MASK            (1UL << BSP_GPIO_PA_OPTOCOUPLER_PIN)
 #define BSP_GPIO_PA_DISPLAY_DIGIT_1_PIN      11U
 #define BSP_GPIO_PA_DISPLAY_DIGIT_2_PIN      10U
 #define BSP_GPIO_PA_DISPLAY_DIGIT_3_PIN       9U

@@ -1,4 +1,5 @@
 #include "app_main.h"
+#include "app_buzzer.h"
 #include "app_display.h"
 #include "app_system.h"
 #include "FreeRTOS.h"
@@ -10,10 +11,16 @@
  */
 uint8_t App_Main_Run(void)
 {
+    if (AppBuzzer_Init() == 0U) {
+        return 0U;
+    }
     if (AppDisplay_Init() == 0U) {
         return 0U;
     }
     if (App_System_Start() == 0U) {
+        return 0U;
+    }
+    if (AppBuzzer_StartBootDemo() == 0U) {
         return 0U;
     }
 
