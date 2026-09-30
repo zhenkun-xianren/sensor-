@@ -2,18 +2,21 @@
 #include "bsp_board.h"
 #include "bsp_byte_ring.h"
 #include "bsp_gpio.h"
+#include "bsp_time.h"
 #include "stm32f103xb.h"
 
 #define BSP_RS485_BAUD_RATE                 9600UL
 #define BSP_RS485_USART_CR1_REQUIRED        (USART_CR1_UE | USART_CR1_TE | USART_CR1_RE)
 #define BSP_RS485_USART_CR1_INTERRUPT_MASK  USART_CR1_RXNEIE
 #define BSP_RS485_IRQ_PRIORITY              6U
+#define BSP_RS485_TX_TIMEOUT_MS              100UL
 #define BSP_RS485_GPIO_MODE_MASK             0xFUL
 #define BSP_RS485_GPIO_PA2_AF_PP_50MHZ       0xBUL
 #define BSP_RS485_GPIO_PA3_FLOATING_INPUT    0x4UL
 #define BSP_RS485_GPIO_PA4_OUTPUT_PP_2MHZ    0x2UL
 
 static BspByteRing s_rx_ring; // USART2 接收中断写入、调用方读取的单生产者单消费者缓冲区。
+static uint8_t s_initialized; // RS485 USART2 与 GPIO 初始化成功标志。
 
 /**
  * @brief 用寄存器配置 PA2/PA3/PA4 和 USART2 的 9600 8N1。
@@ -25,6 +28,7 @@ uint8_t BSP_RS485_Init(void)
     uint32_t crl; // GPIOA 低八个引脚的新配置，保留其他引脚模式。
     uint32_t pin_mask; // PA2、PA3、PA4 配置字段的组合掩码。
 
+    s_initialized = 0U;
     if (BSP_BOARD_PCLK1_HZ < BSP_RS485_BAUD_RATE) {
         return 0U;
     }
@@ -88,6 +92,64 @@ uint8_t BSP_RS485_Init(void)
         NVIC_DisableIRQ(USART2_IRQn);
         return 0U;
     }
+    s_initialized = 1U;
+    return 1U;
+}
+
+/**
+ * @brief 在指定时限内等待 USART2 状态标志置位。
+ * @param flag USART2 状态寄存器中需要等待的标志。
+ * @param start_ms 本次发送开始时的板级毫秒计数。
+ * @param timeout_ms 允许等待的最长时限，单位为毫秒。
+ * @return 标志及时置位返回 1，超时返回 0。
+ */
+static uint8_t bsp_rs485_wait_flag(uint32_t flag, uint32_t start_ms,
+                                   uint32_t timeout_ms)
+{
+    while ((USART2->SR & flag) == 0U) {
+        if ((uint32_t)(BSP_Time_GetMs() - start_ms) >= timeout_ms) {
+            return 0U;
+        }
+    }
+    return 1U;
+}
+
+/**
+ * @brief 通过 USART2 发送数据，并在成功或超时后切回 RS485 接收方向。
+ * @param data 待发送的字节序列。
+ * @param length 待发送的字节数。
+ * @param timeout_ms 发送允许的最长时限，单位为毫秒；须在调度器运行后调用。
+ * @return 发送成功返回 1；参数无效、尚未初始化或等待超时返回 0。
+ */
+uint8_t BSP_RS485_Send(const uint8_t *data, uint8_t length,
+                       uint32_t timeout_ms)
+{
+    uint32_t start_ms; // 用于限制本次完整帧发送时间的起始毫秒计数。
+    uint8_t index; // 当前等待发送的帧字节索引。
+
+    if (s_initialized == 0U || data == 0 || length == 0U || timeout_ms == 0U) {
+        return 0U;
+    }
+    start_ms = BSP_Time_GetMs();
+    GPIOA->BSRR = 1UL << BSP_GPIO_PA_RS485_DIR_PIN;
+
+    for (index = 0U; index < length; ++index) {
+        if (bsp_rs485_wait_flag(USART_SR_TXE, start_ms, timeout_ms) == 0U) {
+            GPIOA->BSRR = 1UL << (BSP_GPIO_PA_RS485_DIR_PIN +
+                                  BSP_GPIO_BSRR_RESET_SHIFT);
+            return 0U;
+        }
+        USART2->DR = data[index];
+    }
+    if (bsp_rs485_wait_flag(USART_SR_TC, start_ms, timeout_ms) == 0U) {
+        GPIOA->BSRR = 1UL << (BSP_GPIO_PA_RS485_DIR_PIN +
+                              BSP_GPIO_BSRR_RESET_SHIFT);
+        return 0U;
+    }
+
+    /* TC 表示最后一个停止位已离开发送端，此时再释放 RS485 总线。 */
+    GPIOA->BSRR = 1UL << (BSP_GPIO_PA_RS485_DIR_PIN +
+                          BSP_GPIO_BSRR_RESET_SHIFT);
     return 1U;
 }
 

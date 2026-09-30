@@ -27,6 +27,19 @@ struct DevModbus {
     DevModbusStatus (*init)(DevModbus *self);
 
     /**
+     * @brief 写入一个保持寄存器并发送功能码 0x06 请求，不等待应答。
+     * @param self 接收写请求的设备对象。
+     * @param slaveAddress 从站地址，范围为 1 至 247。
+     * @param registerAddress 保持寄存器地址。
+     * @param value 要写入的 16 位数值。
+     * @return 请求发送成功返回 DEV_MODBUS_OK，否则返回参数或底层 I/O 错误。
+     */
+    DevModbusStatus (*writeHoldingRegister)(DevModbus *self,
+                                            uint8_t slaveAddress,
+                                            uint16_t registerAddress,
+                                            uint16_t value);
+
+    /**
      * @brief 构造功能码 0x06 的请求帧，不执行串口发送。
      * @param self 接收请求的设备对象。
      * @param slaveAddress 从站地址，范围为 1 至 247。

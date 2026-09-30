@@ -39,7 +39,7 @@ uint8_t App_Main_Run(void)
     } else {
         g_app_modbus_init_status = modbus->init(modbus);
     }
-    g_app_modbus_framework_start_status = App_Modbus_Start();
+    g_app_modbus_framework_start_status = App_Modbus_Start(modbus);
 
     if (AppBuzzer_StartBootDemo() == 0U) {
         return 0U;
