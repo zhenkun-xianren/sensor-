@@ -1,0 +1,16 @@
+LEDTest 移植阶段 00 基线验收记录（待上板确认）
+日期：2026-09-30
+工程：D:\Stm32 product\STM32F103_LEDTest\MDK-ARM\STM32F103_LEDTest.uvprojx
+Target：STM32F103_LEDTest（阶段 00 仅有 V6；V5 从阶段 02 建立）
+编译器：ARMClang V6.9
+构建：UV4.exe -r，正式 Target 重建，0 Error(s)，0 Warning(s)，已链接并生成 HEX。
+程序大小：Code 2794 B；RO 286 B；RW 16 B；ZI 1632 B。
+HEX：D:\Stm32 product\STM32F103_LEDTest\MDK-ARM\STM32F103_LEDTest\STM32F103_LEDTest.hex
+HEX SHA-256：021C21C061660113FC1DE9A08B12696346469665D6155A49103EE529806CD68A
+Intel HEX：校验和通过；数据地址 0x08000000–0x08000C17，数据 3096 B。
+下载配置：Keil uSim=0、uTrg=1（硬件调试）；已配置 STM32F103 Flash 算法。
+预期现象：PB14、PB15 两灯持续常亮。无需连接其他外设。
+用户验收：请烧录该 HEX；断电重启 3 次，每次观察两灯连续常亮至少 60 秒。
+板上结果：用户确认该 LEDTest 工程下载的程序可正常运行；先前已确认两灯点亮且掉电后仍可运行。三次各 60 秒的逐次记录未提供，保留此限制。
+Git：用户已确认基线程序可运行，阶段 00 准备提交、推送分支并创建 methane-port-00 tag。
+

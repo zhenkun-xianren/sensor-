@@ -1,0 +1,9 @@
+# Keil build products and local editor state
+/MDK-ARM/STM32F103_LEDTest/
+/MDK-ARM/STM32F103_LEDTest_V5/
+/MDK-ARM/STM32F103_LEDTest_V6/
+/MDK-ARM/*.lst
+/MDK-ARM/*.log
+/MDK-ARM/*.uvguix.*
+/MDK-ARM/*.Bak
+/MDK-ARM/*.bak
