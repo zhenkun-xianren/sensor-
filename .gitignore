@@ -8,7 +8,3 @@
 /MDK-ARM/*EventRecorderStub.scvd
 /MDK-ARM/*.Bak
 /MDK-ARM/*.bak
-
-/MDK-ARM/Methane_Sensor_V5/
-/MDK-ARM/DebugConfig/
-/MDK-ARM/*.uvoptx

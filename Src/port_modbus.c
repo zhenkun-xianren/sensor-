@@ -1,42 +1,4 @@
 #include "port_modbus.h"
-#include "bsp_rs485.h"
-
-#define PORT_MODBUS_TX_TIMEOUT_MS  100UL
-
-/**
- * @brief 初始化 Modbus RTU 端口使用的 USART2 RS485 接口。
- * @return 初始化成功返回 1，底层串口配置失败返回 0。
- */
-uint8_t PORT_Modbus_Init(void)
-{
-    return BSP_RS485_Init();
-}
-
-/**
- * @brief 构造并发送功能码 0x06 的单寄存器写请求，不等待从站应答。
- * @param slaveAddress 从站地址，范围为 1 至 247。
- * @param registerAddress 目标保持寄存器地址。
- * @param value 写入的 16 位数值。
- * @return 完整请求帧发送成功返回 1，参数或底层发送失败返回 0。
- */
-uint8_t PORT_Modbus_WriteHoldingRegister(uint8_t slaveAddress,
-                                         uint16_t registerAddress,
-                                         uint16_t value)
-{
-    uint8_t request[PORT_MODBUS_REQUEST_LENGTH]; // 请求帧缓冲区，包含数据及 CRC。
-    uint8_t request_length; // 请求帧生成后的有效长度。
-
-    if (PORT_Modbus_BuildWriteSingleRegisterRequest(slaveAddress,
-                                                    registerAddress,
-                                                    value,
-                                                    request,
-                                                    sizeof(request),
-                                                    &request_length) == 0U) {
-        return 0U;
-    }
-    return BSP_RS485_Send(request, request_length,
-                          PORT_MODBUS_TX_TIMEOUT_MS);
-}
 
 /**
  * @brief 计算 Modbus RTU 使用的 CRC-16。

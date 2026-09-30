@@ -11,34 +11,13 @@ typedef struct DevModbus DevModbus;
 typedef enum {
     DEV_MODBUS_OK = 0, /**< 请求帧构造成功。 */
     DEV_MODBUS_ERROR_ARGUMENT, /**< 设备对象、从站地址或输出参数无效。 */
-    DEV_MODBUS_ERROR_BUFFER, /**< 输出缓冲区容量不足。 */
-    DEV_MODBUS_ERROR_IO /**< RS485 板级串口初始化失败。 */
+    DEV_MODBUS_ERROR_BUFFER /**< 输出缓冲区容量不足。 */
 } DevModbusStatus;
 
 /**
  * @brief Modbus RTU 单保持寄存器写请求的设备接口。
  */
 struct DevModbus {
-    /**
-     * @brief 初始化 Modbus RTU 所需的 RS485 板级串口。
-     * @param self 接收初始化请求的设备对象。
-     * @return 初始化成功返回 DEV_MODBUS_OK，否则返回底层 I/O 错误。
-     */
-    DevModbusStatus (*init)(DevModbus *self);
-
-    /**
-     * @brief 写入一个保持寄存器并发送功能码 0x06 请求，不等待应答。
-     * @param self 接收写请求的设备对象。
-     * @param slaveAddress 从站地址，范围为 1 至 247。
-     * @param registerAddress 保持寄存器地址。
-     * @param value 要写入的 16 位数值。
-     * @return 请求发送成功返回 DEV_MODBUS_OK，否则返回参数或底层 I/O 错误。
-     */
-    DevModbusStatus (*writeHoldingRegister)(DevModbus *self,
-                                            uint8_t slaveAddress,
-                                            uint16_t registerAddress,
-                                            uint16_t value);
-
     /**
      * @brief 构造功能码 0x06 的请求帧，不执行串口发送。
      * @param self 接收请求的设备对象。
