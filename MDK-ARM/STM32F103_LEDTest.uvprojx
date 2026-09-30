@@ -598,6 +598,16 @@
           </Files>
         </Group>
         <Group>
+          <GroupName>Application/Modbus</GroupName>
+          <Files>
+            <File>
+              <FileName>app_modbus.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/src/app_modbus.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
           <GroupName>::CMSIS</GroupName>
         </Group>
         <Group>
@@ -1194,6 +1204,16 @@
               <FileName>bsp_rs485.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Src/bsp_rs485.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Application/Modbus</GroupName>
+          <Files>
+            <File>
+              <FileName>app_modbus.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/src/app_modbus.c</FilePath>
             </File>
           </Files>
         </Group>
