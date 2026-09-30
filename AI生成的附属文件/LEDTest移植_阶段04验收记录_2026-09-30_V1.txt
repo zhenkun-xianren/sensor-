@@ -1,0 +1,27 @@
+LEDTest 移植阶段 04：四位数码管验收记录（待上板确认）
+日期：2026-09-30
+工程：D:\Stm32 product\STM32F103_LEDTest\MDK-ARM\STM32F103_LEDTest.uvprojx
+默认 Target：STM32F103_LEDTest_V5，ARMCC V5.06 update 6 (build 750)。V6 Target 保留作手动切换，本阶段未构建 V6。
+上阶段：FreeRTOS 阶段 03 已获用户上板通过，commit bf19f3b、tag methane-port-03 已推送。
+
+来源与适配：
+1. 数码管驱动来源：D:\desktop\internship_program\驱动程序\驱动程序\数码管\FJ5461AH_74AHCT245\README.md，以及现有 Methane Sensor 工程中对应的 Device、Port、BSP、APP 实现。本阶段将完整显示源码与头文件复制到 LEDTest 自身工程，不使用外部绝对路径参加构建。
+2. 原板是 FJ5461AH 四位数码管，74AHCT245 缓冲段选，动态扫描。位选 DIG1–DIG4 分别连接 PA11、PA10、PA9、PA12，小数点 PA15；段选 A–G 分别连接 PB9–PB3。显示引脚启用 2 MHz 推挽输出，预先锁存低电平。仅关闭 JTAG 释放 PA15、PB3、PB4，保留 PA13、PA14 的 SWD。
+3. APP 通过 Device 的 GetDisplay() 接口初始化并设置初始显示 0000；扫描使用 FreeRTOS 静态软件定时器，每 5 ms 扫描一位，四位完整扫描约 20 ms。红外数字显示接口保留，待阶段 06 接入按键事件后再验证。
+4. 显示 GPIO 初始化后检查引脚模式、锁存电平、两灯点亮与 PA1/4/5/6 的安全状态。若初始化或定时器创建失败，程序熄灭 WARNING 灯进入故障状态。
+
+构建证据：正式 V5 Target 重建，显示 APP/Device/Port/BSP 对应的四个 .c 文件均参与编译，完成链接并生成 HEX；0 Error(s)，0 Warning(s)。Code=10240 B，RO=332 B，RW=156 B，ZI=5572 B。
+内存配置：IROM 64 KiB、IRAM 20 KiB；本阶段 Code+RO=10572 B，RW+ZI=5728 B。
+构建日志：D:\Stm32 product\STM32F103_LEDTest\MDK-ARM\stage04_v5_rebuild.log（本地生成物，不纳入 Git）。
+HEX：D:\Stm32 product\STM32F103_LEDTest\MDK-ARM\STM32F103_LEDTest_V5\STM32F103_LEDTest_V5.hex
+HEX SHA-256：624AC67E8A05EDBEA72D42019F0CB80A32D4D266F5E46861A1EC1DB85CECB409
+Intel HEX：校验和通过；数据地址 0x08000000–0x080029E7，数据 10728 B。
+
+待用户上板验证：
+1. 仅烧录以上 V5 HEX。每次完整断电、重新上电后，POWER 与 WARNING 两灯持续常亮，四位数码管稳定显示 0000（四个零，无小数点），无缺段、重影或明显闪烁。
+2. 完成 3 次断电重启，每次连续观察两灯和数码管至少 60 秒；蜂鸣器不鸣叫，继电器不吸合。
+3. 如继续使用 SWD，g_app_system_heartbeat 应约每秒递增；SWD 连接应仍可用。
+4. 请反馈显示的具体内容、亮度/稳定性、3 次冷启动的两灯与执行器状态。若有异常，请记录是哪一位或哪一段出现问题。
+
+用户反馈：用户确认本阶段要求的 0000 稳定显示、两灯、3 次断电重启、蜂鸣器和继电器安全状态均正常，并要求继续下一步。阶段 04 验收通过。
+Git：验收通过后保存至 codex/methane-ledtest-port，并标记 methane-port-04；随后进入阶段 05。

@@ -336,7 +336,7 @@
               <MiscControls></MiscControls>
               <Define>STM32F103xB,FREERTOS_ARM_COMPILER=5</Define>
               <Undefine></Undefine>
-              <IncludePath>../Inc;../Drivers/CMSIS/Device/ST/STM32F1xx/Include;../Drivers/CMSIS/Include;../APP/inc;../Middleware/FreeRTOS/include;../Middleware/FreeRTOS/portable/RVDS/ARM_CM3</IncludePath>
+              <IncludePath>../Inc;../Drivers/CMSIS/Device/ST/STM32F1xx/Include;../Drivers/CMSIS/Include;../APP/inc;../Device/inc;../Middleware/FreeRTOS/include;../Middleware/FreeRTOS/portable/RVDS/ARM_CM3</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -489,6 +489,31 @@
               <FileName>heap_4.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Middleware/FreeRTOS/portable/MemMang/heap_4.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Application/Display</GroupName>
+          <Files>
+            <File>
+              <FileName>app_display.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/src/app_display.c</FilePath>
+            </File>
+            <File>
+              <FileName>port_display.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Src/port_display.c</FilePath>
+            </File>
+            <File>
+              <FileName>bsp_display.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Src/bsp_display.c</FilePath>
+            </File>
+            <File>
+              <FileName>bsp_display_map.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Src/bsp_display_map.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -828,7 +853,7 @@
               <MiscControls></MiscControls>
               <Define>STM32F103xB,FREERTOS_ARM_COMPILER=6</Define>
               <Undefine></Undefine>
-              <IncludePath>../Inc;../Drivers/CMSIS/Device/ST/STM32F1xx/Include;../Drivers/CMSIS/Include;../APP/inc;../Middleware/FreeRTOS/include;../Middleware/FreeRTOS/portable/GCC/ARM_CM3</IncludePath>
+              <IncludePath>../Inc;../Drivers/CMSIS/Device/ST/STM32F1xx/Include;../Drivers/CMSIS/Include;../APP/inc;../Device/inc;../Middleware/FreeRTOS/include;../Middleware/FreeRTOS/portable/GCC/ARM_CM3</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -981,6 +1006,31 @@
               <FileName>heap_4.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Middleware/FreeRTOS/portable/MemMang/heap_4.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Application/Display</GroupName>
+          <Files>
+            <File>
+              <FileName>app_display.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/src/app_display.c</FilePath>
+            </File>
+            <File>
+              <FileName>port_display.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Src/port_display.c</FilePath>
+            </File>
+            <File>
+              <FileName>bsp_display.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Src/bsp_display.c</FilePath>
+            </File>
+            <File>
+              <FileName>bsp_display_map.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Src/bsp_display_map.c</FilePath>
             </File>
           </Files>
         </Group>

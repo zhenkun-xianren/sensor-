@@ -5,7 +5,6 @@
 #define BSP_GPIO_WARNING_LED_PIN      15UL
 #define BSP_GPIO_LED_MASK             ((1UL << BSP_GPIO_POWER_LED_PIN) | \
                                        (1UL << BSP_GPIO_WARNING_LED_PIN))
-#define BSP_GPIO_BSRR_RESET_SHIFT     16UL
 #define BSP_GPIO_CRH_FIRST_PIN        8UL
 #define BSP_GPIO_BITS_PER_PIN         4UL
 #define BSP_GPIO_MODE_MASK            0xFUL
@@ -23,6 +22,40 @@
                                        (1UL << BSP_GPIO_BUZZER_PIN))
 #define BSP_GPIO_SAFE_OUTPUT_MASK     (BSP_GPIO_SAFE_HIGH_MASK | \
                                        BSP_GPIO_SAFE_LOW_MASK)
+#define BSP_GPIO_DISPLAY_DIGIT_MASK   ((1UL << BSP_GPIO_PA_DISPLAY_DIGIT_1_PIN) | \
+                                       (1UL << BSP_GPIO_PA_DISPLAY_DIGIT_2_PIN) | \
+                                       (1UL << BSP_GPIO_PA_DISPLAY_DIGIT_3_PIN) | \
+                                       (1UL << BSP_GPIO_PA_DISPLAY_DIGIT_4_PIN))
+#define BSP_GPIO_DISPLAY_DP_MASK      (1UL << BSP_GPIO_PA_DISPLAY_DP_PIN)
+
+/**
+ * @brief 将指定 STM32F1 GPIO 引脚配为 2 MHz 推挽输出。
+ * @param port 要配置的 GPIO 端口。
+ * @param pin 该端口中要配置的引脚编号。
+ */
+static void bsp_gpio_configure_output(GPIO_TypeDef *port, uint32_t pin)
+{
+    volatile uint32_t *config = pin < 8U ? &port->CRL : &port->CRH; // 目标引脚所在的模式寄存器。
+    uint32_t shift = (pin % 8U) * BSP_GPIO_BITS_PER_PIN; // 目标引脚四位模式字段的偏移。
+
+    *config = (*config & ~(BSP_GPIO_MODE_MASK << shift)) |
+              (BSP_GPIO_OUTPUT_PP_2MHZ << shift);
+}
+
+/**
+ * @brief 检查指定 GPIO 引脚是否处于 2 MHz 推挽输出模式。
+ * @param port 待检查的 GPIO 端口。
+ * @param pin 该端口中待检查的引脚编号。
+ * @return 模式正确返回 1，否则返回 0。
+ */
+static uint8_t bsp_gpio_output_is_ready(GPIO_TypeDef *port, uint32_t pin)
+{
+    volatile uint32_t *config = pin < 8U ? &port->CRL : &port->CRH; // 待读取的引脚模式寄存器。
+    uint32_t shift = (pin % 8U) * BSP_GPIO_BITS_PER_PIN; // 待检查模式字段的偏移。
+
+    return (((*config >> shift) & BSP_GPIO_MODE_MASK) ==
+            BSP_GPIO_OUTPUT_PP_2MHZ) ? 1U : 0U;
+}
 
 /**
  * @brief 先预置低电平，再将 PB14、PB15 配为推挽输出以点亮两灯。
@@ -66,6 +99,62 @@ void BSP_Gpio_InitSafeOutputs(void)
         }
     }
     GPIOA->CRL = crl;
+}
+
+/**
+ * @brief 释放显示用 JTAG 引脚并配置四位位选、段选及小数点输出。
+ * @return 显示引脚、安全输出和两灯状态均正确返回 1，否则返回 0。
+ */
+uint8_t BSP_Gpio_InitDisplayPins(void)
+{
+    static const uint8_t digit_pins[] = { // 从左至右四位数码管位选所接的 PA 引脚。
+        BSP_GPIO_PA_DISPLAY_DIGIT_1_PIN, BSP_GPIO_PA_DISPLAY_DIGIT_2_PIN,
+        BSP_GPIO_PA_DISPLAY_DIGIT_3_PIN, BSP_GPIO_PA_DISPLAY_DIGIT_4_PIN
+    };
+    uint32_t index; // 遍历四个位选或七个段选引脚的索引。
+
+    RCC->APB2ENR |= RCC_APB2ENR_AFIOEN | RCC_APB2ENR_IOPAEN |
+                    RCC_APB2ENR_IOPBEN;
+    (void)RCC->APB2ENR;
+
+    /* 仅关闭 JTAG，释放 PA15、PB3、PB4；PA13/PA14 的 SWD 保持可用。 */
+    AFIO->MAPR = (AFIO->MAPR & ~AFIO_MAPR_SWJ_CFG) |
+                 AFIO_MAPR_SWJ_CFG_JTAGDISABLE;
+
+    /* 先拉低位选及段选锁存电平，切换为输出时不点亮错误段。 */
+    GPIOA->BSRR = (BSP_GPIO_DISPLAY_DIGIT_MASK |
+                   BSP_GPIO_DISPLAY_DP_MASK) << BSP_GPIO_BSRR_RESET_SHIFT;
+    GPIOB->BSRR = BSP_GPIO_PB_DISPLAY_SEGMENT_MASK << BSP_GPIO_BSRR_RESET_SHIFT;
+
+    for (index = 0U; index < sizeof(digit_pins) / sizeof(digit_pins[0]); ++index) {
+        bsp_gpio_configure_output(GPIOA, digit_pins[index]);
+    }
+    bsp_gpio_configure_output(GPIOA, BSP_GPIO_PA_DISPLAY_DP_PIN);
+    for (index = BSP_GPIO_PB_DISPLAY_SEGMENT_G_PIN;
+         index <= BSP_GPIO_PB_DISPLAY_SEGMENT_A_PIN; ++index) {
+        bsp_gpio_configure_output(GPIOB, index);
+    }
+
+    if ((GPIOA->ODR & (BSP_GPIO_DISPLAY_DIGIT_MASK |
+                       BSP_GPIO_DISPLAY_DP_MASK)) != 0U ||
+        (GPIOB->ODR & BSP_GPIO_PB_DISPLAY_SEGMENT_MASK) != 0U ||
+        bsp_gpio_output_is_ready(GPIOA, BSP_GPIO_PA_DISPLAY_DP_PIN) == 0U ||
+        BSP_Gpio_IndicatorsAreOn() == 0U ||
+        BSP_Gpio_SafeOutputsAreOff() == 0U) {
+        return 0U;
+    }
+    for (index = 0U; index < sizeof(digit_pins) / sizeof(digit_pins[0]); ++index) {
+        if (bsp_gpio_output_is_ready(GPIOA, digit_pins[index]) == 0U) {
+            return 0U;
+        }
+    }
+    for (index = BSP_GPIO_PB_DISPLAY_SEGMENT_G_PIN;
+         index <= BSP_GPIO_PB_DISPLAY_SEGMENT_A_PIN; ++index) {
+        if (bsp_gpio_output_is_ready(GPIOB, index) == 0U) {
+            return 0U;
+        }
+    }
+    return 1U;
 }
 
 /**

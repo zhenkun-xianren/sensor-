@@ -1,4 +1,5 @@
 #include "app_main.h"
+#include "app_display.h"
 #include "app_system.h"
 #include "FreeRTOS.h"
 #include "task.h"
@@ -9,6 +10,9 @@
  */
 uint8_t App_Main_Run(void)
 {
+    if (AppDisplay_Init() == 0U) {
+        return 0U;
+    }
     if (App_System_Start() == 0U) {
         return 0U;
     }
