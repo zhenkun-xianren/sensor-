@@ -1,0 +1,31 @@
+LEDTest 移植阶段 02：V5/V6 双 Target 与安全输出验收记录（待上板确认）
+日期：2026-09-30
+工程：D:\Stm32 product\STM32F103_LEDTest\MDK-ARM\STM32F103_LEDTest.uvprojx
+分支：codex/methane-ledtest-port；阶段 01 已推送 commit 1ea66d4、tag methane-port-01。
+
+本阶段改动：
+1. 新增 STM32F103_LEDTest_V5 与 STM32F103_LEDTest_V6 两个 Target；分别使用 ARMCC V5.06 update 6 (build 750) 与 ARMClang V6.9，宏 FREERTOS_ARM_COMPILER 分别为 5 和 6，编译器错配在 bsp_compiler.h 给出明确报错。两个 Target 使用各自输出目录，硬件下载设置保留 LEDTest 原配置。
+2. 正式构建的 7 个文件在两 Target 完全一致：startup_stm32f103xb.s、firmware_main.c、bsp_board.c、bsp_gpio.c、bsp_time.c、bsp_interrupt.c、system_stm32f1xx.c。CubeMX/HAL 运行代码仍不参与。
+3. 在手写入口中，PB14 POWER 与 PB15 WARNING 低电平常亮后，先预置 PA1 高电平、PA4/PA5/PA6 低电平，再设为推挽输出并检查模式和锁存电平。按原有硬件逻辑，PA1 高使 PC817 导通并将 24V_IO_OUT 拉低；PA4 低为 RS485 接收；PA5 低为继电器关闭；PA6 低为蜂鸣器关闭。检查失败时 WARNING 熄灭提示故障。
+4. 维持手写 HSI 64 MHz 时钟和 1 ms SysTick 时基。FreeRTOS 及对应移植层将在阶段 03 接入。
+
+构建证据：
+V5：ARMCC V5.06 update 6 (build 750)，链接、生成 HEX；0 Error(s)，0 Warning(s)；Code=1140 B，RO=284 B，RW=16 B，ZI=1632 B。
+V6：ARMClang V6.9，链接、生成 HEX；0 Error(s)，0 Warning(s)；Code=1126 B，RO=286 B，RW=4 B，ZI=1652 B。
+V5 HEX：D:\Stm32 product\STM32F103_LEDTest\MDK-ARM\STM32F103_LEDTest_V5\STM32F103_LEDTest_V5.hex
+V5 SHA-256：A7B6199763002B00C2269C6A3BD3B6962B2D8C2F87AE75B62E9137C94AAD369E
+V5 Intel HEX：校验和通过；数据地址 0x08000000–0x0800059F，数据 1440 B。
+V6 HEX：D:\Stm32 product\STM32F103_LEDTest\MDK-ARM\STM32F103_LEDTest_V6\STM32F103_LEDTest_V6.hex
+V6 SHA-256：83F2822A8672CFBE72DB385A6E7F2F92911B932F32381BCD642DD62983E68E4B
+V6 Intel HEX：校验和通过；数据地址 0x08000000–0x0800058F，数据 1424 B。
+构建日志：MDK-ARM\stage02_v5_rebuild.log、MDK-ARM\stage02_v6_rebuild.log（本地生成物，不纳入 Git）。
+
+待用户上板验证：
+1. 分别烧录 V5 和 V6 HEX，不要把两个固件合并烧录。
+2. 每种固件均完成 3 次完全断电、重新上电。每次观察 POWER 和 WARNING 两灯连续常亮至少 60 秒，不应交替闪烁或中途熄灭。
+3. 两种固件下继电器均不吸合、蜂鸣器均不鸣叫；如已连接现场 24 V 输出并具备安全测量条件，核对 24V_IO_OUT 为关闭低电平。RS485 方向维持接收。
+4. 反馈 V5、V6 是否分别通过，以及任何异常现象和对应固件。
+
+用户反馈：V5、V6 均分别完成 3 次完全断电重启，每次 POWER 与 WARNING 持续常亮至少 60 秒；继电器未吸合，蜂鸣器未鸣叫。用户确认本阶段全部适用检查项符合，并明确要求继续下一步。
+后续默认选择：用户随后要求默认只用 V5、不用 V6。工程把 V5 设为当前 Target 和批量构建目标；V6 Target 保留供以后手动切换，但后续阶段默认仅构建、交付与上板验收 V5。
+Git：验收通过后按计划保存至 codex/methane-ledtest-port，并标记 methane-port-02；随后进入阶段 03。

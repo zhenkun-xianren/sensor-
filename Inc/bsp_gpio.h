@@ -9,10 +9,21 @@
 void BSP_Gpio_InitIndicators(void);
 
 /**
+ * @brief 将 PA1、PA4、PA5、PA6 预置为现场输出、RS485 接收、继电器和蜂鸣器的安全状态。
+ */
+void BSP_Gpio_InitSafeOutputs(void);
+
+/**
  * @brief 检查两路 LED 的输出模式和点亮电平。
  * @return 两灯均配置为低电平输出时返回 1，否则返回 0。
  */
 uint8_t BSP_Gpio_IndicatorsAreOn(void);
+
+/**
+ * @brief 检查 PA1、PA4、PA5、PA6 的模式与安全电平。
+ * @return 四路输出均处于预定关闭状态返回 1，否则返回 0。
+ */
+uint8_t BSP_Gpio_SafeOutputsAreOff(void);
 
 /**
  * @brief 在启动或异常失败时熄灭 WARNING 灯，保留 POWER 灯点亮。
