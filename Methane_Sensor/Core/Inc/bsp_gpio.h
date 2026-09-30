@@ -1,0 +1,70 @@
+#ifndef BSP_GPIO_H
+#define BSP_GPIO_H
+
+#define BSP_GPIO_PINS_PER_CONFIG_REGISTER 8U
+#define BSP_GPIO_CONFIG_BITS_PER_PIN 4U
+#define BSP_GPIO_CONFIG_FIELD_MASK 0xFUL
+#define BSP_GPIO_PIN_CONFIG_INDEX_MASK (BSP_GPIO_PINS_PER_CONFIG_REGISTER - 1U)
+#define BSP_GPIO_BSRR_RESET_SHIFT 16U
+#define BSP_GPIO_EXTICR_INDEX_PA8 2U
+
+/* STM32F103 board pin assignments. */
+#define BSP_GPIO_PA_UNUSED_FIRST_PIN 0U
+#define BSP_GPIO_PA_UNUSED_LAST_PIN 0U
+#define BSP_GPIO_PA_RS485_TX_PIN 2U
+#define BSP_GPIO_PA_RS485_RX_PIN 3U
+#define BSP_GPIO_PA_RS485_DIRECTION_PIN 4U
+#define BSP_GPIO_PA_RS485_DIRECTION_MASK (1UL << BSP_GPIO_PA_RS485_DIRECTION_PIN)
+#define BSP_GPIO_PA_OPTOCOUPLER_PIN 1U
+#define BSP_GPIO_PA_RELAY_PIN 5U
+#define BSP_GPIO_PA_BUZZER_PIN 6U
+#define BSP_GPIO_PA_IR_INPUT_PIN 8U
+#define BSP_GPIO_PA_IR_INPUT_MASK (1UL << BSP_GPIO_PA_IR_INPUT_PIN)
+#define BSP_GPIO_PA_DISPLAY_DIGIT_1_PIN 11U
+#define BSP_GPIO_PA_DISPLAY_DIGIT_2_PIN 10U
+#define BSP_GPIO_PA_DISPLAY_DIGIT_3_PIN 9U
+#define BSP_GPIO_PA_DISPLAY_DIGIT_4_PIN 12U
+#define BSP_GPIO_PA_DISPLAY_DP_PIN 15U
+#define BSP_GPIO_PB_DISPLAY_SEGMENT_A_PIN 9U
+#define BSP_GPIO_PB_DISPLAY_SEGMENT_B_PIN 8U
+#define BSP_GPIO_PB_DISPLAY_SEGMENT_C_PIN 7U
+#define BSP_GPIO_PB_DISPLAY_SEGMENT_D_PIN 6U
+#define BSP_GPIO_PB_DISPLAY_SEGMENT_E_PIN 5U
+#define BSP_GPIO_PB_DISPLAY_SEGMENT_F_PIN 4U
+#define BSP_GPIO_PB_DISPLAY_SEGMENT_G_PIN 3U
+#define BSP_GPIO_PB_METHANE_UART_TX_PIN 10U
+#define BSP_GPIO_PB_METHANE_UART_RX_PIN 11U
+#define BSP_GPIO_PB_POWER_LED_PIN 14U
+#define BSP_GPIO_PB_WARNING_LED_PIN 15U
+#define BSP_GPIO_PB_UNUSED_FIRST_PIN 12U
+#define BSP_GPIO_PB_UNUSED_LAST_PIN 13U
+
+/* STM32F1 GPIO CRL/CRH 每个引脚使用 4 位配置字段。 */
+#define BSP_GPIO_MODE_INPUT_FLOATING  0x4UL
+#define BSP_GPIO_MODE_INPUT_PULLUP    0x8UL
+#define BSP_GPIO_MODE_OUTPUT_PP_2MHZ  0x2UL
+#define BSP_GPIO_MODE_AF_PP_2MHZ      0xAUL
+
+#define BSP_GPIO_PA_SAFE_HIGH_MASK (1UL << BSP_GPIO_PA_OPTOCOUPLER_PIN)
+#define BSP_GPIO_PA_SAFE_LOW_MASK ((1UL << BSP_GPIO_PA_RELAY_PIN) | \
+                                   (1UL << BSP_GPIO_PA_BUZZER_PIN) | \
+                                   BSP_GPIO_PA_RS485_DIRECTION_MASK | \
+                                   (1UL << BSP_GPIO_PA_DISPLAY_DIGIT_1_PIN) | \
+                                   (1UL << BSP_GPIO_PA_DISPLAY_DIGIT_2_PIN) | \
+                                   (1UL << BSP_GPIO_PA_DISPLAY_DIGIT_3_PIN) | \
+                                   (1UL << BSP_GPIO_PA_DISPLAY_DIGIT_4_PIN) | \
+                                   (1UL << BSP_GPIO_PA_DISPLAY_DP_PIN))
+#define BSP_GPIO_PB_DISPLAY_SEGMENT_MASK ((1UL << BSP_GPIO_PB_DISPLAY_SEGMENT_A_PIN) | \
+                                          (1UL << BSP_GPIO_PB_DISPLAY_SEGMENT_B_PIN) | \
+                                          (1UL << BSP_GPIO_PB_DISPLAY_SEGMENT_C_PIN) | \
+                                          (1UL << BSP_GPIO_PB_DISPLAY_SEGMENT_D_PIN) | \
+                                          (1UL << BSP_GPIO_PB_DISPLAY_SEGMENT_E_PIN) | \
+                                          (1UL << BSP_GPIO_PB_DISPLAY_SEGMENT_F_PIN) | \
+                                          (1UL << BSP_GPIO_PB_DISPLAY_SEGMENT_G_PIN))
+#define BSP_GPIO_PB_SAFE_LOW_MASK (BSP_GPIO_PB_DISPLAY_SEGMENT_MASK | \
+                                   (1UL << BSP_GPIO_PB_POWER_LED_PIN) | \
+                                   (1UL << BSP_GPIO_PB_WARNING_LED_PIN))
+
+int BSP_Gpio_Init(void);
+
+#endif

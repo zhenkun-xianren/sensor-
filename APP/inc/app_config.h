@@ -1,0 +1,6 @@
+#ifndef APP_CONFIG_H
+#define APP_CONFIG_H
+
+#define APP_TIMER_SERVICE_TASK_STACK_WORDS 256U
+
+#endif
