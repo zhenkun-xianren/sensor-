@@ -538,6 +538,26 @@
           </Files>
         </Group>
         <Group>
+          <GroupName>Application/Infrared</GroupName>
+          <Files>
+            <File>
+              <FileName>app_ir_relay.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/src/app_ir_relay.c</FilePath>
+            </File>
+            <File>
+              <FileName>port_ir_remote.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Src/port_ir_remote.c</FilePath>
+            </File>
+            <File>
+              <FileName>bsp_ir.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Src/bsp_ir.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
           <GroupName>::CMSIS</GroupName>
         </Group>
       </Groups>
@@ -1071,6 +1091,26 @@
               <FileName>bsp_actuator.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Src/bsp_actuator.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Application/Infrared</GroupName>
+          <Files>
+            <File>
+              <FileName>app_ir_relay.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../APP/src/app_ir_relay.c</FilePath>
+            </File>
+            <File>
+              <FileName>port_ir_remote.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Src/port_ir_remote.c</FilePath>
+            </File>
+            <File>
+              <FileName>bsp_ir.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Src/bsp_ir.c</FilePath>
             </File>
           </Files>
         </Group>

@@ -1,4 +1,5 @@
 #include "bsp_gpio.h"
+#include "bsp_ir.h"
 #include "stm32f103xb.h"
 
 static volatile uint32_t s_fault_code; // 最近一次处理器异常代码，供 SWD 调试查看。
@@ -53,4 +54,12 @@ void BusFault_Handler(void)
 void UsageFault_Handler(void)
 {
     fault_stop(5U);
+}
+
+/**
+ * @brief 转交 PA8 对应的 EXTI8 边沿中断进行红外脉冲测量。
+ */
+void EXTI9_5_IRQHandler(void)
+{
+    BSP_Ir_IrqHandler();
 }

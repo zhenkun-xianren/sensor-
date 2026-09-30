@@ -1,0 +1,30 @@
+LEDTest 移植阶段 06：红外遥控接入验收记录（已通过）
+日期：2026-09-30
+工程：D:\Stm32 product\STM32F103_LEDTest\MDK-ARM\STM32F103_LEDTest.uvprojx
+默认 Target：STM32F103_LEDTest_V5，ARMCC V5.06 update 6 (build 750)。V6 Target 保留供手动切换，本阶段未构建 V6。
+上阶段：蜂鸣器和执行器阶段 05 已获用户上板通过，commit e8fecbd、tag methane-port-05 已推送。用户确认蜂鸣器能响、数码管和两灯显示正常；随后确认两次短鸣后自动停止、继电器不吸合及 3 次断电重启均通过。
+
+来源与适配：
+1. NEC 解码源文件和说明复制自 D:\desktop\internship_program\驱动程序\驱动程序\红外遥控\NEC；APP 按键逻辑参照现有 Methane Sensor 工程。实现中的无关调试变量已移除，目标工程包含全部所需 Device、Port、BSP、APP 文件，不通过外部绝对路径构建。
+2. 按项目现行要求，IRM-3638T 的 OUT 连接 PA8，PA8 配为输入上拉；AFIO 将 EXTI8 显式映射到 PA8，EXTI 双边沿由 EXTI9_5_IRQHandler 接收。
+3. 板级时钟为 HCLK 64 MHz、PCLK1 32 MHz、APB1 定时器输入时钟 64 MHz。TIM3 按其输入时钟推导 PSC=63，计数频率 1 MHz（1 计数=1 微秒），ARR=65535，利用 16 位自然回绕测量 NEC 边沿间隔；EXTI 优先级 6，不调用 FreeRTOS ISR API。
+4. NEC 事件消费使用静态 FreeRTOS 任务、静态任务栈和静态 100 ms 单次提示音定时器；空闲时任务每 10 ms 阻塞等待。按键重复帧不重复执行动作。启动时原有两次蜂鸣器自检仍保留。
+5. 按键逻辑：数字键显示 0000–0009；命令 0x09 加一、0x15 减一，显示范围 0–9999 并饱和；数字 5 吸合继电器、数字 4 释放继电器；数字 7 开启 24V_IO_OUT、数字 8 关闭；每个新完整按键帧发出约 100 ms 提示音。数字 4/5/7/8 同时更新显示数值。
+6. 上电及出错路径先保持继电器释放、24V_IO_OUT 关闭、蜂鸣器关闭；如果任一输出状态检查失败，停止处理后续按键并尝试恢复安全输出。g_app_ir_relay_status 为 1 表示红外控制任务就绪，3 表示安全输出已确认，4 表示安全输出无法确认；g_app_system_heartbeat 仍应约每秒自增。
+
+构建证据：正式 V5 Target 完整重建，app_ir_relay.c、port_ir_remote.c、bsp_ir.c 均参与编译，完成链接并生成 HEX；0 Error(s)，0 Warning(s)。Code=13932 B，RO-data=340 B，RW-data=212 B，ZI-data=6692 B。
+内存配置：IROM 64 KiB、IRAM 20 KiB；Code+RO=14272 B，RW+ZI=6904 B。
+构建日志：D:\Stm32 product\STM32F103_LEDTest\MDK-ARM\stage06_v5_rebuild.log（本地生成物，不纳入 Git）。
+HEX：D:\Stm32 product\STM32F103_LEDTest\MDK-ARM\STM32F103_LEDTest_V5\STM32F103_LEDTest_V5.hex
+HEX SHA-256：DE2A8FEE7F677B04B914A4FC0640DF0B44E334232B70292E71A595BBFE7CCAD4
+Intel HEX：校验和通过；数据地址 0x08000000–0x08003893，数据 14484 B。
+
+待用户上板验证：
+1. 烧录以上 V5 HEX。完成 3 次完全断电重启；每次 POWER 与 WARNING 两灯持续常亮至少 60 秒，数码管上电显示 0000，蜂鸣器仍按阶段 05 上电短鸣两次后自动安静，继电器和 24V_IO_OUT 上电保持关闭。
+2. 使用当前 NEC 遥控器逐个验证数字键、加一键、减一键，确认显示值准确、重复按键不会重复执行。单个完整新按键应有一次短提示音。
+3. 验证数字 5 吸合继电器、数字 4 释放；数字 7 开启现场隔离输出、数字 8 关闭。收尾时再按数字 4 和数字 8，确保继电器与 24V_IO_OUT 都回到关闭状态。
+4. 使用已有现场输出负载/测试连接验证 24V_IO_OUT；不要在未接妥输出负载或现场电源时将其误判为有效。整个过程两灯持续常亮、数码管扫描正常、蜂鸣器按键提示后关闭。若使用 SWD，g_app_ir_relay_status 应保持 1，g_app_system_heartbeat 约每秒递增。
+5. 如遥控器某键的显示或动作与记录映射不同，请记录遥控器该键、显示值、蜂鸣器和继电器/输出的现象；异常时先停止按键，不继续执行下一阶段。
+
+用户反馈：红外按键及输出功能正常。阶段 06 验收通过，已按计划保存并推送。
+Git：codex/methane-ledtest-port；tag methane-port-06。
