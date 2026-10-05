@@ -1,0 +1,37 @@
+#ifndef PORT_OLED_H
+#define PORT_OLED_H
+
+#define PORT_OLED_COLUMNS             128U
+#define PORT_OLED_PAGES                 8U
+#define PORT_OLED_GLYPH_COLUMNS        5U
+#define PORT_OLED_GLYPH_ADVANCE        6U
+#define PORT_OLED_DECIMAL_DIGITS_MAX  10U
+
+#define PORT_OLED_CMD_UNLOCK          0xFDU
+#define PORT_OLED_CMD_UNLOCK_VALUE    0x12U
+#define PORT_OLED_CMD_DISPLAY_OFF     0xAEU
+#define PORT_OLED_CMD_DISPLAY_ON      0xAFU
+#define PORT_OLED_CMD_CLOCK           0xD5U
+#define PORT_OLED_CLOCK_VALUE         0xA0U
+#define PORT_OLED_CMD_MULTIPLEX       0xA8U
+#define PORT_OLED_MULTIPLEX_64        0x3FU
+#define PORT_OLED_CMD_OFFSET          0xD3U
+#define PORT_OLED_OFFSET_ZERO         0x00U
+#define PORT_OLED_START_LINE_ZERO     0x40U
+#define PORT_OLED_SEGMENT_REMAP       0xA1U
+#define PORT_OLED_COM_REMAP           0xC8U
+#define PORT_OLED_CMD_COM_PINS        0xDAU
+#define PORT_OLED_COM_PINS_VALUE      0x12U
+#define PORT_OLED_CMD_CONTRAST        0x81U
+#define PORT_OLED_CONTRAST_VALUE      0x7FU
+#define PORT_OLED_CMD_PRECHARGE       0xD9U
+#define PORT_OLED_PRECHARGE_VALUE     0x82U
+#define PORT_OLED_CMD_VCOMH           0xDBU
+#define PORT_OLED_VCOMH_VALUE         0x34U
+#define PORT_OLED_DISPLAY_RAM         0xA4U
+#define PORT_OLED_DISPLAY_NORMAL      0xA6U
+#define PORT_OLED_PAGE_BASE           0xB0U
+#define PORT_OLED_COLUMN_LOW_ZERO     0x00U
+#define PORT_OLED_COLUMN_HIGH_ZERO    0x10U
+
+#endif /* PORT_OLED_H */

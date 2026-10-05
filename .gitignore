@@ -1,10 +1,16 @@
 # Keil build products and local editor state
-/MDK-ARM/STM32F103_LEDTest/
-/MDK-ARM/STM32F103_LEDTest_V5/
-/MDK-ARM/STM32F103_LEDTest_V6/
-/MDK-ARM/*.lst
-/MDK-ARM/*.log
-/MDK-ARM/*.uvguix.*
-/MDK-ARM/*EventRecorderStub.scvd
-/MDK-ARM/*.Bak
-/MDK-ARM/*.bak
+/Methane_Sensor/MDK-ARM/STM32F103_LEDTest/
+/Methane_Sensor/MDK-ARM/STM32F103_LEDTest_V5/
+/Methane_Sensor/MDK-ARM/STM32F103_LEDTest_V6/
+/Methane_Sensor/MDK-ARM/*.lst
+/Methane_Sensor/MDK-ARM/*.log
+/Methane_Sensor/MDK-ARM/*.uvguix.*
+/Methane_Sensor/MDK-ARM/*EventRecorderStub.scvd
+/Methane_Sensor/MDK-ARM/*.Bak
+/Methane_Sensor/MDK-ARM/*.bak
+
+/Methane_Sensor/MDK-ARM/Methane_Sensor_V5/
+/Methane_Sensor/MDK-ARM/DebugConfig/
+
+# Local VS Code state
+.vscode/
