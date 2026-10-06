@@ -1,0 +1,53 @@
+ADC四层接口与用户实板验证步骤 V1
+北京时间：2026-10-06T12:25:19+08:00
+程序位置：D:\desktop\internship_program\Differential_Pressure Air_Velocity_Sensor
+状态：正式Compiler5编译链接通过；硬件待用户验证；未自行烧录、软件模拟或实测。
+
+一、程序位置及使用方式
+APP测量：APP/inc/app_measurement.h、APP/src/app_measurement.c。
+Device契约：Device/inc/dev_adc.h（仅接口和类型，无硬件操作）。
+Port实现：Differential_Pressure_Air_Velocity_Sensor_board/Inc/port_adc.h、Src/port_adc.c。
+BSP实现：Differential_Pressure_Air_Velocity_Sensor_board/Inc/bsp_adc.h、Src/bsp_adc.c。
+启动流程已接入App_MainStart；业务只调用App_Measurement_GetLatest获取完整缓存，不直接操作ADC或BSP。
+只有返回APP_MEASUREMENT_OK时才可使用snapshot.millivolts；其他返回值须按失效状态处理。
+输出字段：signal_raw/reference_raw=各32次四舍五入平均码；millivolts=用于显示/通信的毫伏值；unclamped_millivolts=未限幅的毫伏值；boundary_clamped=边界归并标记；timestamp_ms=本周期尝试完成时刻；status/adc_status=业务及ADC结果。
+配置集中于app_measurement.h：100ms周期、32组、300ms失效期限、2500mV名义参考、±30mV容差。板级引脚、ADC时钟、采样时间及超时在bsp_adc.h/.c集中配置。
+GetAdc的init/readPair只由测量模块串行调用；不要让显示或Modbus任务直接启动ADC，以免破坏成对采样。
+
+二、ADC接线和理论关系
+以当前原理图第1页为准：U99.1接外部电压信号，U99.2接信号地；本版输入范围0~5V。
+PA6是经100k/150k分压、1M偏置和OPA2333缓冲后的节点；PA7是经运放缓冲的2.5V参考，不是第二路独立外部输入。
+Vin=2.5*(53*N6/N7-3)/30；32组累加值比值用于实际计算。
+理论电压检查点（名义电阻、参考2.5V；仅用于核对接线和换算方向，不代表实测保证）：
+外部输入(V) | PA6节点约(V) | PA7节点约(V) | 显示目标附近
+0.0 | 0.1415 | 2.5000 | 0.000
+0.5 | 0.4245 | 2.5000 | 0.500
+2.5 | 1.5566 | 2.5000 | 2.500
+4.5 | 2.6887 | 2.5000 | 4.500
+5.0 | 2.9717 | 2.5000 | 5.000
+PA6在外部输入0V时应仍有约0.14V偏置；若原始码是零，应按异常检查，不按正常0V解读。
+
+三、由用户执行的实板验收
+1. 使用正式目标产物，按正常方法给板供电；由用户自行烧录及连接调试器。产物：D:\desktop\internship_program\Differential_Pressure Air_Velocity_Sensor\Differential_Pressure_Air_Velocity_Sensor_board\MDK-ARM\Differential_Pressure_Air_Velocity_Sensor_board\Differential_Pressure_Air_Velocity_Sensor_board.hex。
+2. 启动时先显示E01等待；首次采样约在调度开始100ms后完成，显示在下一次100ms内容刷新时更新。初始化失败则在g_app_status中查看APP_ERROR_MEASUREMENT及g_board_fault，固件不启动依赖任务。
+3. 向U99施加0、0.5、2.5、4.5、5V，分别记录万用表实测输入、PA6/PA7节点、快照原始值、未限幅值、millivolts、显示及误差。未进行实板两点标定，数码管三位小数仅表示显示分辨率。
+4. 使用现有RS485接线和接收工具，9600波特率、8数据位、无校验、1停止位。每秒应看到从站1、功能码06、寄存器0000、毫伏值的8字节RTU请求。若有效测量值为2345mV，字段为01 06 00 00 09 29 CRC_L CRC_H。寄存器使用协议零基地址。
+5. 对照g_measurement_update_count（正常约每秒10次）、g_measurement_status、g_measurement_adc_status、g_modbus_send_count、g_modbus_send_success_count、g_modbus_skip_count、g_modbus_measurement_status和g_modbus_last_millivolts。本地发送成功不表示从站已经执行。
+6. 使用已有功能切换继电器/蜂鸣器，记录最大电压偏差，检查数码管扫描稳定性及通信是否仍更新；观察是否触发栈溢出或内存故障。
+7. 参考异常、转换超时、采样失败、数据过期路径已静态核对，尚未故障注入实测；如实板出现这些状态，保存状态字段和原始数据反馈。
+
+四、错误和边界显示
+E01：尚无有效测量或超过300ms未更新，通信跳过。
+E02：运行期ADC初始化/读取/转换失败，通信跳过，下个周期重试初始化及校准。
+E03：任一次参考原始值为零或4095饱和，不做除法，通信跳过。
+E04：信号触及ADC上下轨，或换算超出[-30,5030]mV，通信跳过。
+[-30,0)和(5000,5030]mV归并到0或5000；status仍为OK，boundary_clamped=true，未限幅值保留。
+错误帧在显示下一次100ms内容刷新时更新；GetLatest在读取时立即检查有效状态及期限。
+
+五、后续入库条件
+用户已明确“确认正常更新到驱动库”，当前Device/Port、配套ADC BSP及说明已正常入库至：D:\desktop\internship_program\驱动程序\驱动程序\ADC\STM32F103C8T6_ADC1_PA6_PA7_双通道轮询。库已记录工程编译通过、硬件待验证及已知反馈。此前等待整份驱动实板通过的入库时机被本次明确要求替代；硬件状态没有改为通过。来源与一致性清单及ADC分类更新日志见对应库目录。
+
+ADC超时修复与排查状态（2026-10-06）：
+- 同一目标包含先前的ADC完成标志/超时竞态修复：最终失败前短临界区复查EOC；校准截止时复查控制位。保持1ms转换/20ms校准上限及有限轮询，未增加整体转换临界区。
+- 短暂错误诊断：g_measurement_adc_error_count累计失败周期，g_measurement_last_adc_error保留最近失败Device原因；DEV_TIMEOUT=2、DEV_IO_ERROR=6、DEV_NOT_READY=-2。g_measurement_last_valid保留最近成功快照，仅供调试，可能过期，业务仍用GetLatest。
+- 用户反馈PA6及PA7均实测1.79V；参考通道与标称2.5V不符，电源/参考/运放节点电压尚待补充。未修改换算系数，也未宣称实板故障已解决。

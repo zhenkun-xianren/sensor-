@@ -1,0 +1,57 @@
+
+
+========== GPIO/执行器统一维护 ==========
+公共信息
+实际更新时间：2026-10-05 16:31:13 +08:00
+用户授权：本聊天用户先确认统一方向、仅F103参考，明确同意列明的新增函数/状态码/兼容处理，再要求实施完整计划；精确授权时刻未确认，不补造。
+具体驱动包：共用
+实际更新文件（库内相对路径）：
+共用\Device\inc\dev_common.h
+共用\README.md
+库根README同时追加本次维护边界，其他分类仅引用同一实际更新，不重复计为代码更新。
+
+新增
+DevStatus枚举新增成员：DEV_ARGUMENT_ERROR=-1（非法参数/对象），DEV_NOT_READY=-2（所需初始化未成功）。
+
+修改
+文件：共用\Device\inc\dev_common.h
+类型修改前：
+typedef enum {
+    DEV_OK = 0,         /**< 操作成功完成。 */
+    DEV_PENDING,        /**< 操作尚未完成，调用方可稍后继续查询。 */
+    DEV_TIMEOUT,        /**< 操作等待响应超过规定时限。 */
+    DEV_FORMAT_ERROR,   /**< 输入数据或响应帧格式无效。 */
+    DEV_LRC_ERROR,      /**< 响应帧的 LRC 校验失败。 */
+    DEV_SENSOR_ERROR,   /**< 响应有效，但传感器报告故障状态。 */
+    DEV_IO_ERROR        /**< 底层外设读写或初始化失败。 */
+} DevStatus;
+类型修改后：
+typedef enum {
+    DEV_OK = 0,         /**< 操作成功完成。 */
+    DEV_PENDING = 1,        /**< 操作尚未完成，调用方可稍后继续查询。 */
+    DEV_TIMEOUT = 2,        /**< 操作等待响应超过规定时限。 */
+    DEV_FORMAT_ERROR = 3,   /**< 输入数据或响应帧格式无效。 */
+    DEV_LRC_ERROR = 4,      /**< 响应帧的 LRC 校验失败。 */
+    DEV_SENSOR_ERROR = 5,   /**< 响应有效，但传感器报告故障状态。 */
+    DEV_IO_ERROR = 6,   /**< 底层外设读写或初始化失败；保留库原值6。 */
+    DEV_ARGUMENT_ERROR = -1, /**< 设备对象、参数或输出指针无效。 */
+    DEV_NOT_READY = -2  /**< 所需初始化尚未成功。 */
+} DevStatus;
+原因：补齐库状态码兼容或新版设备方法契约；原状态码数值保留。
+
+工程范围：旧DEV_IO_ERROR=-3统一为库原DEV_IO_ERROR=6；原库DEV_OK=0、DEV_PENDING=1、DEV_TIMEOUT=2、DEV_FORMAT_ERROR=3、DEV_LRC_ERROR=4、DEV_SENSOR_ERROR=5、DEV_IO_ERROR=6全部保留，赋值改为显式数字。APP检索确认按枚举名称判断，其他驱动源码不修改；共用README同步。
+
+删除
+无。旧库全部函数及控制能力保留；工程私有函数重命名属于修改，未删除控制功能。
+
+屏蔽
+无。当前GPIO/执行器通用层无功能宏屏蔽；库额外BSP兼容入口保留，工程使用G071自身BSP。旧共享整板F103原件不改，与新五路实现择一构建，不属于删除或库源码屏蔽。
+
+一致性核对与验证结果
+工程与库7个通用文件逐字节一致，13个对应Port函数完整签名/实现/中文注释逐项一致，Device类型/方法及DevStatus依赖一致；旧库14个GPIO/执行器函数全部保留。APP与BSP因平台不同不要求字节一致，G071与F103所需BSP签名核对一致。
+工程：D:\desktop\internship_program\Ultrasonic_Ranging\Ultrasonic_Ranging_Program\MDK-ARM\Ultrasonic_Ranging_Program.uvprojx；目标Ultrasonic_Ranging_Program。
+工具D:\Keil\MDK\UV4\UV4.exe，Compiler V5.06 update6 build750；正式全量重建0错误0警告，链接及HEX/AXF生成成功，UV4退出码0。Code15472/RO324/RW236/ZI11492。
+195项工程构建输入前后SHA-256一致；相对初始只有7项计划内修改，188项原输入不变。静态覆盖对象/初始化检查、零/非零电平转换、五路默认关闭、查询失败不改输出、板级失败尽力关闭、旧入口保留及官方F103字段依据。
+软件测试：未运行（用户明确要求）；F103库参考：未单独编译；其他库驱动未重建；硬件：待用户验证，未烧录/调试/操作实物，不标记为硬件已验证。
+证据目录：D:\desktop\实习\4-超声波风速 2026-9-21 V1.0\AI生成的附属文件\GPIO执行器驱动统一_2026-10-05_16-13-08
+逐函数核对采用V2，补齐指针返回的GetGpio/GetActuator；V1核对器遗漏其计数，源码/整文件核对不受影响。

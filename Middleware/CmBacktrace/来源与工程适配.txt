@@ -1,0 +1,15 @@
+CmBacktrace 工程内副本来源
+官方仓库：https://github.com/armink/CmBacktrace
+用户指定下载目录：D:\desktop\internship_program\CmBacktrace
+固定来源提交：3be35d99673805f258de5c2f156fac94eb896da4
+库源码版本：CMB_SW_VERSION 1.5.0；许可：MIT（LICENSE 随工程保留）。
+工程 Middleware/CmBacktrace/cm_backtrace 完整复制自上述提交，各文件 SHA-256 已与克隆原件核对一致。
+本工程通过相对路径编译本地 cm_backtrace.c，不依赖下载目录的源码。
+上游 fault_handler/keil/cmb_fault.s 保留但不参与正式编译。正式入口由板级 Src/bsp_backtrace_fault.s 提供。
+工程配置在板级 Inc/cmb_cfg.h；平台适配在 Src/bsp_backtrace.c、Inc/bsp_backtrace.h。
+FreeRTOS 源码未改：利用 vTaskGetInfo / xTaskGetCurrentTaskHandle 获取当前任务，开启 configRECORD_STACK_HIGH_ADDRESS。
+实现上游所需 vTaskStackAddr(void)、vTaskStackSize(void)、vTaskName(void)，返回本次已核对的故障任务快照。
+适配仅用于本工程异常解析路径；直接在正常任务调用 cm_backtrace_assert/call_stack 前需补齐正常上下文快照。
+原 UART Device/Port、公共 UART 驱动库未改；故障串口输出属于诊断 BSP，不扩展 Device 方法。
+软件验证：正式 ARMCC5 编译链接通过，0错误0警告；未运行软件测试或模拟。
+硬件验证：待用户；AI 未烧录、操作硬件或制造异常。

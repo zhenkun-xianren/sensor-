@@ -1,0 +1,57 @@
+CmBacktrace 串口栈回溯使用说明（2026-10-06）
+
+1. 已接入的正式工程
+程序目录：D:\desktop\internship_program\Differential_Pressure Air_Velocity_Sensor
+Keil 工程：Differential_Pressure_Air_Velocity_Sensor_board\MDK-ARM\Differential_Pressure_Air_Velocity_Sensor_board.uvprojx
+目标：Differential_Pressure_Air_Velocity_Sensor_board
+编译器：ARMCC 5.06 update 6（build 750）；正式编译/链接：0错误、0警告。
+GitHub 原库：D:\desktop\internship_program\CmBacktrace；提交3be35d99673805f258de5c2f156fac94eb896da4。
+中间件已独立复制到工程 Middleware/CmBacktrace，下载目录不参与固件构建。
+
+2. 连接和串口设置
+使用现有 TTL 串口：PA2 为发送，连接串口模块 RX；PA3 为接收，连接串口模块 TX；GND 共地，MCU 侧使用 3.3V 逻辑电平。
+串口助手设为 9600 波特率、8 数据位、无校验、1 停止位、无流控；关闭本地回显。
+诊断以英文 ASCII 和 CR/LF 输出，在串口助手中选择文本显示并保存完整日志。
+先打开串口，再由用户下载本次 HEX，复位并运行，以便捕获启动任务后的异常输出。
+
+3. 固件位置
+HEX：Differential_Pressure_Air_Velocity_Sensor_board\MDK-ARM\Differential_Pressure_Air_Velocity_Sensor_board\Differential_Pressure_Air_Velocity_Sensor_board.hex
+AXF：同目录 Differential_Pressure_Air_Velocity_Sensor_board.axf
+下载后复现原来的故障。若 Keil 在异常入口断点或异常捕获处暂停，先保存需要的现场，再按 F5 继续，使诊断打印代码得到执行。
+正常启动不输出诊断横幅，UART 保留原样回传；正常 RS485 每秒电压发送及显示流程保留。
+
+4. 异常时输出内容
+HardFault、MemManage、BusFault、UsageFault、NMI 使用唯一汇编入口，保存原始 EXC_RETURN/MSP，并切换到独立 2048 字节诊断栈。原 PSP 和异常帧不被诊断打印的压栈覆盖。
+串口先打印 [CmBacktrace]、异常号、EXC_RETURN、MSP/PSP、CFSR/HFSR/BFAR/MMFAR、可读的 PC/LR/xPSR。
+随后 CmBacktrace 打印故障任务名或中断上下文、最多16字的栈内容、寄存器、错误解释，以及最多16层候选调用栈地址。
+输出结束后仍保持 g_board_fault = BSP_FAULT_EXCEPTION（7），在故障循环运行，便于 SWD 重连；业务输出关闭。
+异常接管 USART2 后关闭发送中断并轮询 TXE/TC，不等待 FreeRTOS，不依赖 SysTick，不使用 printf 半主机输出，不再接收回传；未发出的软件发送队列字节不排空。
+9600 波特率下完整诊断通常需要数秒，串口窗口应持续接收。
+故障状态寄存器中的 BFAR/MMFAR 仅在对应 VALID 位设置时才有效。IMPRECISERR 是延后报告的总线错误，栈中 PC 不保证为真正触发写入的指令。
+
+5. 定位到函数和源码
+CmBacktrace 输出的 addr2line 命令使用本次固件的完整 AXF 名称。
+Windows PowerShell 调用官方库自带工具的方法：
+& 'D:\desktop\internship_program\CmBacktrace\tools\addr2line\win64\addr2line.exe' -e 'D:\desktop\internship_program\Differential_Pressure Air_Velocity_Sensor\Differential_Pressure_Air_Velocity_Sensor_board\MDK-ARM\Differential_Pressure_Air_Velocity_Sensor_board\Differential_Pressure_Air_Velocity_Sensor_board.axf' -afpiC <日志中地址1> <日志中地址2>
+将尖括号占位符替换为实际十六进制地址；保留同次构建的 AXF 与日志。重编译会改变代码和 RAM 地址，不能使用旧 AXF 解释新日志。
+已静态确认官方 win64 addr2line 可以读取本次 ARMCC AXF 并解析函数、源码行号。
+调用栈是基于栈内容和 Thumb 调用指令的候选路径，栈被破坏后不保证完整或每项都是真实调用。
+
+6. 没有日志时
+若 Keil 已暂停且打印尚未执行，按 F5 继续。
+若故障发生在 BSP_Backtrace_Init 之前（例如 HSI 时钟初始化失败），串口和库尚未准备，不保证有诊断输出，仍读取 g_board_fault。
+UART 无时钟、未启用或发送超时时，程序保留故障状态；Keil 查看 g_backtrace_fault、g_backtrace_entry_active、g_backtrace_uart_timeout_count。
+异常栈帧、TCB 或栈范围不在有效 SRAM，或者出现入栈错误时，打印原始状态/可读现场并明确跳过不可靠回溯，避免读不可访问内存。
+芯片完全锁死、供电/时钟失效或诊断自身发生嵌套故障时，日志仍可能不完整。
+本次接入不会自动修复此前跳到 RAM 数据区的故障，需要根据新日志继续定位。
+
+7. 验证状态与用户验收
+Flash：Code 28008 + RO-data 3456 = 31464 字节；静态 RAM：RW-data 440 + ZI-data 14272 = 14712 字节，20KB SRAM 余量5768字节。
+独立诊断栈已包含在 ZI-data 中；主栈/原任务栈大小保持，任务控制块因记录高地址字段而增加。
+链接器静态栈报告给出416字节已知部分及Unknown部分，不能作为2048字节诊断栈已实板验证的结论。
+用户确认正常时 UART 原样回传、显示和 RS485 功能，复现原异常并保存从 [CmBacktrace] 到结束行的完整文本。
+软件模拟/单元测试：未运行（未明确要求）；AI 未烧录或实物测试；串口输出与故障现场解析：硬件待用户验证。
+请将新日志及所用 AXF 的版本/哈希一同保留，不沿用此前地址判断本次现场。
+
+2026-10-06 16:15:46 +08:00 当前HSI构建说明
+系统恢复为HSI标称8MHz，HSE/PLL关闭，诊断软件版本标识HSI8-CMB-20261006；串口仍9600/8N1。ARMCC5正式编译链接0错误0警告。当前Flash=31388字节，静态RAM=14712字节；此前接入统计保留为历史。原HardFault来源未确认，运行状态由用户验证。使用当前HEX与配套AXF，重新进入调试并清理旧绝对地址断点。

@@ -1,0 +1,20 @@
+# Keil 编译中间文件和本机界面/调试设置
+*.o
+*.obj
+*.d
+*.crf
+*.dep
+*.lnp
+*.lst
+*.iex
+*.htm
+*.bak
+*.uvguix.*
+*.uvoptx
+*.scvd
+
+# 正式目标输出仅保留同次构建的固件、调试映像与链接映射
+/Differential_Pressure_Air_Velocity_Sensor_board/MDK-ARM/Differential_Pressure_Air_Velocity_Sensor_board/*
+!/Differential_Pressure_Air_Velocity_Sensor_board/MDK-ARM/Differential_Pressure_Air_Velocity_Sensor_board/*.hex
+!/Differential_Pressure_Air_Velocity_Sensor_board/MDK-ARM/Differential_Pressure_Air_Velocity_Sensor_board/*.axf
+!/Differential_Pressure_Air_Velocity_Sensor_board/MDK-ARM/Differential_Pressure_Air_Velocity_Sensor_board/*.map

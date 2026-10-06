@@ -1,0 +1,19 @@
+#ifndef CMB_CFG_H
+#define CMB_CFG_H
+
+#include "bsp_backtrace.h"
+
+#define CMB_USING_OS_PLATFORM
+#define CMB_OS_PLATFORM_TYPE CMB_OS_PLATFORM_FREERTOS
+#define CMB_CPU_PLATFORM_TYPE CMB_CPU_ARM_CORTEX_M3
+#define CMB_PRINT_LANGUAGE CMB_PRINT_LANGUAGE_ENGLISH
+#define CMB_USING_DUMP_STACK_INFO
+#define CMB_DUMP_STACK_DEPTH_SIZE 16U
+#define CMB_CALL_STACK_MAX_DEPTH 16U
+/* 完整保存正式 AXF 文件名，默认 32 字符会把本项目长名称截断。 */
+#define CMB_NAME_MAX 80U
+#define CMB_CSTACK_BLOCK_NAME STACK
+#define CMB_CODE_SECTION_NAME ER_IROM1
+#define cmb_println(...) BSP_Backtrace_Println(__VA_ARGS__)
+
+#endif

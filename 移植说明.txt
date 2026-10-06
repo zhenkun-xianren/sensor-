@@ -1,0 +1,135 @@
+压差风速传感器四模块适配说明
+
+四模块移植记录 V1
+记录时间：2026-10-05 22:59:42 +08:00
+人工核对：待人工核对。硬件：待用户验证。
+
+一、授权和正式工程
+用户明确要求实施完整移植方案：数码管、NEC红外、RS485主站完整收发、执行器；接入FreeRTOS运行框架，暂不增加联动或自动发送。
+程序根目录：D:\desktop\internship_program\Differential_Pressure Air_Velocity_Sensor
+正式工程：D:\desktop\internship_program\Differential_Pressure Air_Velocity_Sensor\Differential_Pressure_Air_Velocity_Sensor_board\MDK-ARM\Differential_Pressure_Air_Velocity_Sensor_board.uvprojx
+正式目标：Differential_Pressure_Air_Velocity_Sensor_board
+芯片：STM32F103C8T6，64KB Flash、20KB RAM。
+编译器：Arm Compiler 5.06 update 6（build 750）；构建工具D:\Keil\MDK\UV4\UV4.exe。
+主频：HSI 8MHz，SYSCLK/HCLK/PCLK1/PCLK2/TIM2输入均8MHz，未切换HSE或PLL。
+引脚依据：D:\desktop\实习\5-压差风速传感器 2026-9-26 v1.0\引脚表.txt，正式V1.0，原生epro版本SHA-256已核对，实板版本尚待用户确认。
+原生设计仅用于本次段位功能、电气拓扑核对；未回查原理图PDF替代引脚表。
+
+二、来源、文件和分层
+库根目录：D:\desktop\internship_program\驱动程序\驱动程序。
+来源包：数码管/FJ5461AH_4位共阴_74AHCT245并行动态扫描、红外遥控/NEC、执行器/继电器_光耦_蜂鸣器_LED、GPIO/STM32F103C8T6、Modbus/RTU主站_RTU_RS485、共用。
+当前维护包的完整副本（含参考BSP、说明、附带CMSIS及许可证）存于工程DriverReference，作为来源参考，不参与构建。实际通用层和适配层按APP/Device及板级Inc/Src组织。
+FreeRTOS：本地FreeRTOS-Kernel-main快照，task.h声明V11.1.0+（开发快照），tasks/list/queue/timers、include、RVDS/ARM_CM3及唯一heap_4原字节复制，许可证随工程。
+详细来源和SHA-256：复制来源清单.json；编译文件和最终哈希：最终编译源码清单.json。
+Device/Port、共用环形缓冲和FreeRTOS共50份副本与来源原字节一致，源库文件保持。
+启用SEND=1、RESPONSE=1，保持全库接口；本次无功能屏蔽、无通用层新增/修改、无库维护更新。
+
+三、本板BSP适配
+数码管：A~G PB9/PB8/PB7/PB6/PB5/PB4/PB3，DP PA15；DIG1~4 PA12/PA11/PA10/PB0。高有效、2MHz推挽，仅所属字段。每次先关闭位选，再更新段码，最后只选通一位；非法位置保持输出，硬件配置异常尽力消隐。
+红外：PA8弱上拉输入、EXTI8双边沿，TIM2 1MHz、ARR=65535，由65.536ms更新中断扩展时间。64位内部累计保证长空闲不截断为短脉冲，向Port提供32位自然回绕时间戳及饱和间隔。边沿读CNT同时处理UIF，IRQ同优先级2；重入边沿或重复电平通知LOST，更新通知IDLE。共享EXTI5~9仅处理线路8。正常框架无长中断屏蔽；未来扩展不得屏蔽中断超过一个65.536ms更新周期，否则硬件单UIF无法恢复遗漏的多个回绕。
+RS485：USART3默认映射，PB10复用推挽TX/PB11浮空RX/PB2方向；9600/8N1，BRR由PCLK1推导并四舍五入。PB2先预置低再输出；高发送低接收。发送整体50ms，等待TC后释放；超时释放方向、关闭UART、必须重新初始化。应答整体100ms由原Port实现。USART3 IRQ记录PE/FE/NE/ORE及128槽环形队列错误；拒绝中断、PRIMASK或BASEPRI屏蔽的等待调用。串行事务仅允许一个任务调用。
+执行器：PB1继电器高有效，PA9有源蜂鸣器高有效，PB15光耦沿用现场高低语义反相，PB13报警灯/PB14电源灯为低有效开漏2MHz。关闭锁存PA9低；PB1低、PB15高、PB13/PB14释放高。两灯更新仅修改灯掩码，不覆盖同端口继电器、光耦或通信。光耦逻辑关闭请求意味着PC817导通并拉低现场输出，不能理解为光耦LED断电。
+SWD：启动最先显式写JTAGDISABLE/SWD保留，每次MAPR修改排除SWJ_CFG读值并重新附带正确模式；只核对可读时钟、GPIO和其他重映射字段。RM0008 Rev21 PDF184页明确SWJ_CFG只写、读值未定义，故没有虚构该字段读回成功。现有调试设置标识ARM CoreSight SW-DP，未连接硬件验证。
+
+四、启动与APP
+唯一main由手写firmware_main.c提供。生成main/gpio/it/msp和HAL源码保留原位作参考，从正式构建清单排除；.ioc原字节未变，未运行CubeMX。
+固件先建立调试、HSI时钟、SysTick基础时基，再由APP通过Device初始化GPIO、执行器、显示、主站和红外，然后启动模块对象和调度器。每项返回状态检查，失败由板级故障入口尽力建立关闭锁存、释放RS485和消隐。
+显示为1ms静态自动重载软件定时器；默认空白，回调只扫描并记录状态。
+红外静态任务每10ms轮询，每轮最多读取8条（实际队列容量7条）防止持续噪声导致任务饥饿；保存最近事件和累计溢出，不执行按键业务。
+RS485初始化保持接收，不创建周期发送或事务任务。保留功能码0x06的sendHoldingRegister和writeHoldingRegister原接口，不支持广播、从站或自定义帧。
+执行器仅初始化，保存并核对默认五路逻辑关闭状态，无自动吸合、发声或亮灯。
+FreeRTOS Tick=1ms，Timer Service优先级3，红外任务优先级2；静态任务栈Idle128字、Timer256字、IR256字；唯一heap_4容量2048字节，保留动态分配能力，但当前应用对象全部静态创建。启动阶段只创建一次，无周期或中断堆分配。
+SVC/PendSV使用上游移植层唯一入口；SysTick为BSP包装，启动前维护基础毫秒计数，调度器启动后同时调用内核Tick。
+
+五、构建和核对
+正式重建日志_最终.txt：0错误、0警告；所有26份C源码与启动汇编确实参与构建，完成链接和HEX生成。
+Program Size：Code=13156，RO-data=336，RW-data=228，ZI-data=7292字节。
+ROM（Code+RO+RW）=13720字节（约13.40KiB），RAM（RW+ZI）=7520字节（约7.34KiB）。容量在芯片范围内；链接占用不表示任务实际栈余量已实测。
+AXF：D:\desktop\internship_program\Differential_Pressure Air_Velocity_Sensor\Differential_Pressure_Air_Velocity_Sensor_board\MDK-ARM\Differential_Pressure_Air_Velocity_Sensor_board\Differential_Pressure_Air_Velocity_Sensor_board.axf
+HEX：D:\desktop\internship_program\Differential_Pressure Air_Velocity_Sensor\Differential_Pressure_Air_Velocity_Sensor_board\MDK-ARM\Differential_Pressure_Air_Velocity_Sensor_board\Differential_Pressure_Air_Velocity_Sensor_board.hex
+静态确认：所有编译路径均在工程内、相对引用；唯一main/SysTick/SVC/PendSV/EXTI9_5/TIM2/USART3入口；最终链接无HAL符号；四类引脚掩码不重叠，SWD未归业务。
+首次构建1错误0警告：RVDS内联汇编A1586E，原因优先级宏C整数U后缀；只修复目标配置的宏表达，不改上游port.c。最终源码额外检查初始化关闭状态及禁止屏蔽时基期间等待，修正后正式重建通过。
+软件模拟/单元测试/其他软件运行测试：未运行（用户未要求）。
+库参考BSP单独构建：未运行。
+硬件验证/烧录/实物调试：AI未执行，硬件待用户验证。
+
+六、文档和留档
+修改前85份文件已原字节备份并逐份核对SHA-256，详见修改前备份清单.json；原有程序只有正式uvprojx主动修改，所有原有生成源码与.ioc保持。
+工程DriverReference保留各包原始说明；本工程当前适配说明和用户验证步骤另存工程内移植说明.txt与本批次硬件验证步骤_V1.txt，避免误把来源参考引脚当作本板连接。
+STM32手册RM0008、DS5319、ES096及EVERLIGHT IRM资料已按PDF规则核实，当前解析记录在各PDF同目录。未把资料核对写成硬件通过，未进行整板电路检查或更改。
+本次未改变项目规则、驱动库原件、硬件设计或其他工程。
+
+
+四模块用户硬件验证步骤 V1
+状态：硬件待用户验证。AI没有烧录、连接目标或执行实物测试。
+正式工程：D:\desktop\internship_program\Differential_Pressure Air_Velocity_Sensor\Differential_Pressure_Air_Velocity_Sensor_board\MDK-ARM\Differential_Pressure_Air_Velocity_Sensor_board.uvprojx
+本次最终固件：D:\desktop\internship_program\Differential_Pressure Air_Velocity_Sensor\Differential_Pressure_Air_Velocity_Sensor_board\MDK-ARM\Differential_Pressure_Air_Velocity_Sensor_board\Differential_Pressure_Air_Velocity_Sensor_board.hex
+验证前先确认实板版本对应正式引脚表V1.0的原生工程。由用户自行选择SW/SWD连接及烧录本次HEX。
+
+1. 基础启动
+在调试器观察g_board_fault=NONE、g_app_status=APP_OK（调度器正常运行时不返回）。数码管默认空白、两灯熄灭、继电器释放、蜂鸣器关闭，RS485方向PB2低。g_actuator_initial_state五字段均0，仅为软件锁存核对。光耦逻辑0对应现场输出拉低。
+确认SysTick、IR任务及Timer Service持续运行；用户检查各任务栈最低余量。保持PA13/PA14为SWD，不在GPIO操作中占用。
+
+2. 数码管
+默认固件不显示演示内容。用户后续用一个任务通过GetDisplay的现有方法提交内容，不新增第二个scanStep周期源。
+依次使用showDigit显示DIG1至DIG4上的数字8，确认左到右顺序与无重影；showAll检查A~G和各位DP；showInteger4显示1234；showFixedPoint以1234与1位小数显示123.4，并对比PAD/SUPPRESS模式。检查clear下一扫描边界变空白、stop立即关闭且后续扫描不再点亮，合法内容更新可恢复显示。
+g_display_scan_status应保持DEV_DISPLAY_OK；非法位置不改变显示，越界数值按库提交E04。
+
+3. NEC红外
+正常运行状态下发送有效NEC完整帧，观察g_ir_has_event及g_ir_last_event.address/command/raw_code；驱动只报告事件，不改变显示或执行器。
+长按检查repeat=1沿用最近完整事件；超过150ms历史窗口后重复帧不产生有效事件。等待超过65.536ms及更长空闲后再次按键，确认下一完整帧正常，不出现假短脉冲或旧键重复。测试计数回绕及边沿接近更新的情况时以逻辑分析仪观察PA8脉冲与事件，检查g_ir_overflow_count。
+测试异常反码、缺失末尾脉冲和接收噪声时，不应产生活动业务动作。g_ir_status=NO_EVENT是每轮排空后的正常状态，不能用它否定已经记录的last_event。
+
+4. RS485
+默认固件只接收，不自动发送。用户后续在唯一任务上下文串行调用GetModbus；不要在ISR、临界区或调试器暂停时执行等待事务。
+9600/8N1；连接受控Modbus从站，选择可安全写入的寄存器，再由任务调用writeHoldingRegister检查正常0x06回显。核对PB2发送期间高，最后停止位结束后低；sendHoldingRegister成功只表示本地发送完成，不代表从站执行。
+分别准备CRC错误、地址/功能码/回显错误、异常应答、无应答，检查对应错误码和100ms应答期限。用户检查噪声、溢出及队列满时返回接收错误；发送超时应释放方向、关闭UART，下一独立调用须先init。
+本库仅实现主站0x06，不通过这个驱动验证从站、广播或自定义协议。
+
+5. 执行器
+由用户在受控负载条件下，通过GetActuator的setRelay、setOptocoupler、setBuzzer、setIndicatorLeds分别开关。检查PB1与PA9高有效；PB13/PB14拉低点亮、释放熄灭；检查控制两灯时继电器与光耦状态不变。
+光耦setOptocoupler逻辑0：PB15高、PC817导通、现场输出低；逻辑非0：PB15低、现场输出由外部上拉获得高。逻辑关闭并不等于关闭光耦LED电流。
+getState只读取GPIO ODR锁存后的逻辑转换；用户另测触点、实际电压和负载状态，不能用getState替代实物反馈。
+
+6. 反馈记录
+每项记录实板版本、最终HEX哈希、接线、供电、操作、实测结果和复现条件。当前文档不是通过记录；未验证项继续标记待验证。
+
+RS485每秒测试发送修改记录 V1
+记录时间：2026-10-06 11:02:08 +08:00
+用户要求：修改RS485 APP层程序，每秒发送测试数据。
+本节为当前RS485行为说明，替代前文历史记录中的“只初始化、不自动发送”；历史记录原文保留。
+
+修改文件：APP/src/app_modbus.c、APP/inc/app_modbus.h、APP/src/app_main.c、APP/inc/app_main.h。
+启动：完成设备初始化及其他模块启动后，创建256字栈、优先级1的静态RS485发送任务和1000ms静态自动重载定时器；首次发送约在调度开始1秒后。
+调度：定时器只通知任务，串口发送在唯一任务内串行执行，避免阻塞1ms显示扫描；延迟累计通知合并，不连续补发；没有通知则不发送。
+数据：固定Modbus RTU功能码0x06，从站1、协议零基寄存器0x0000、数值1，完整帧01 06 00 00 00 01 48 0A。
+参数：APP_MODBUS_TEST_PERIOD_MS、APP_MODBUS_TEST_SLAVE_ADDRESS、APP_MODBUS_TEST_REGISTER_ADDRESS、APP_MODBUS_TEST_VALUE集中在app_modbus.c顶部。
+接口：沿用sendHoldingRegister，只发送不等待应答；DEV_MODBUS_OK仅表示本地发送完成。IO、超时或未初始化失败后，下一周期先尝试init，失败则等待下一周期，不忙重试。
+观察：g_modbus_init_status为最近初始化结果；g_modbus_send_status为最近发送或恢复失败结果；g_modbus_send_count累计发送调用；g_modbus_send_success_count累计本地成功发送。
+边界：当前发送任务独占Modbus单实例，其他任务不要并发执行该设备事务。
+当前USART3板级参数保持9600 bit/s、8数据位、无校验、1停止位。
+Device/Port四份文件已与当前Modbus驱动库SHA-256核对一致；本次仅APP业务及其说明修改。
+
+验证交接：由用户连接RS485接收端，设置9600/8N1及十六进制显示，烧录本次HEX后检查约每秒收到上述8字节，检查发送成功计数持续增加，并检查红外、显示扫描仍运行。
+编译结果及固件SHA-256详见本批次“完成核对记录.txt”和“正式编译日志_最终.txt”。
+软件测试：未运行（未明确要求）。硬件测试、烧录及实物调试：AI未执行，待用户验证。
+人工核对：待人工核对。
+
+2026-10-06 外部晶振切换（历史时钟配置，已由后文HSI恢复替代）
+本节替代此前HSI作为系统时钟的说明，历史记录保留。
+X3为YC8MLBCD2XT、8MHz无源晶振，频率来自当前原生epro器件属性；OSC连接依据工作区根目录正式引脚表。
+正式固件使用HSE晶体模式：HSEBYP清零，等待HSERDY，SW切换HSE并核对SWS。SYSCLK/HCLK/PCLK1/PCLK2/TIM2输入均8MHz，PLL关闭；HSI仅作为启动过渡和备用保留。
+HSE启动有限轮询不依赖尚未初始化的SysTick；未就绪或切换失败返回BSP_BOARD_ERROR，正式入口记录BSP_FAULT_CLOCK并停止业务启动。
+BSP_Board_CheckClock核对HSEON/HSERDY、非旁路和PLL关闭、SWS及不分频总线、CMSIS时钟值。CMSIS默认HSE_VALUE=8MHz与X3匹配。
+SysTick仍1ms，ADC仍PCLK2/2=4MHz，TIM2仍1MHz计数，USART2和USART3仍9600/8N1，LED/测量/显示/RS485任务周期保持。
+CubeMX、IOC、生成源码和正式工具链配置均未改动。Device/Port和UART BSP不变；库已入库HSI参考保留，本工程HSE为新的板级配置，不能用旧正常反馈证明新时钟已实板验证。
+软件运行测试未运行（未明确要求），AI未烧录或操作硬件；编译结果和当前固件哈希见本任务完成核对记录。
+
+2026-10-06 恢复内部HSI（当前时钟配置）
+用户要求：改回原来的内部时钟，不使用外部晶振。本节替代上节HSE时钟配置，历史记录保留。
+正式固件启用HSI、恢复默认HSITRIM，等待HSIRDY；SW切换HSI并核对SWS后关闭HSE、PLL及CSS，确认关闭后清除HSEBYP。
+SYSCLK/HCLK/PCLK1/PCLK2/TIM2输入均为标称8MHz；PLL关闭。SystemCoreClockUpdate按HSI更新，BSP_Board_CheckClock核对HSI就绪、系统源和总线分频及HSE/PLL/CSS关闭。
+SysTick仍1ms，ADC仍4MHz，TIM2仍1MHz计数，USART2/USART3仍9600/8N1；UART原样回传、RS485每秒电压发送、显示和CmBacktrace保留。
+诊断软件版本标识更新为HSI8-CMB-20261006。HSE改变不代表此前HardFault已修复，原始破坏来源仍未确认。
+CubeMX、IOC、FreeRTOS内核、Device/Port及驱动库均不变。仅修改板级系统时钟和诊断标识及说明。
+软件测试未运行；AI未烧录或操作硬件，硬件由用户验证。本次编译和固件哈希见对应HSI恢复批次记录。
