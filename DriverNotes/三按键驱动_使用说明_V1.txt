@@ -1,0 +1,85 @@
+三按键驱动使用说明 V1
+
+适用工程与接线
+正式工程：radar_system/MDK-ARM/radar_system.uvprojx，目标radar_system。
+MCU：STM32F103C8T6/LQFP48。依据硬件项目根目录引脚表.txt V1.1及2026-10-02资料版本。
+SW6=PA0，SW4=PA1，SW5=PA2。用户确认外部上拉；按下拉低、释放高电平。
+BSP配置浮空输入，不启用内部上下拉；仅修改PA0/1/2，保留其他外设与调试脚。
+软件配置依赖外部上拉电阻以及开关闭合将输入拉低的实际接法。
+板卡与资料版本一致性、外部电平及实物按键行为由用户验证。
+
+功能与参数
+Device契约：Device/inc/dev_key.h；软件策略：Device/inc/dev_key_config.h。
+Port：radar_system/Core/Inc/port_key.h、Core/Src/port_key.c。
+BSP：radar_system/Core/Inc/bsp_key.h、Core/Src/bsp_key.c。
+扫描10ms、按下和释放连续稳定20ms；長按800ms从消抖按下确认时起计。
+每次按住最多报告一次长按；短按在释放消抖确认后报告，长按释放不报告短按。
+短按事件序列PRESS→RELEASE→SHORT；长按PRESS→LONG→RELEASE。
+允许同时按键，各键状态独立。若同次扫描确认多键，按SW6/SW4/SW5顺序写入事件。
+首次初始化假定消抖状态释放；上电已按住也必须完成完整消抖后才报告PRESS。
+连续扫描间隔大于20ms或板级读取失败后，不把间断当成持续按住；恢复后重新消抖。
+原已按住状态保留至释放消抖确认，但该次不完整的按住不报告LONG或SHORT，下一次完整按压恢复正常。
+时间戳uint32_t单位毫秒，差值处理自然回绕；调用者不得倒退时间。
+
+启动与线程约束
+firmware_main.c为正式唯一main；生成main.c保留原位，从正式目标源码清单排除。
+BSP_Board_Init：显式关闭JTAG保留SWD，保持HSI 8MHz及AHB/APB不分频，建立1ms SysTick。
+APP总入口App_Main_Run调用App_Key_Start、App_Display_Start，再调用唯一的vTaskStartScheduler。
+App_Key_Start通过GetKey取得对象并检查方法/初始化结果，静态创建10ms软件定时器。
+Timer Service任务执行扫描，回调不阻塞、不分配堆、不处理报警业务。
+生成中断仅USER CODE接入：SVC/PendSV参考空函数改名，正式向量由RVDS移植层提供；
+SysTick保留HAL_IncTick，调度器启动后额外调用xPortSysTickHandler。
+FreeRTOS内核V11.1.0+来自本机既有源码快照，所需源码/头文件、RVDS/ARM_CM3唯一移植层和MIT许可证全部位于Middleware/FreeRTOS。
+唯一heap_4保留，堆2048字节；动态API编译支持开启，但本次对象全部静态创建，扫描热路径不调用动态分配。
+空闲任务栈128字，定时器任务栈256字；启动及栈溢出/断言具备故障记录。栈余量尚未实测。
+任务通过Device read/get_state接口消费，驱动内部短PRIMASK临界区保护状态/队列，并恢复进入前状态。
+scan须只有一个周期调用源；自动扫描已启动后APP不应再次自行scan或重新init。
+APP不访问Port/BSP和寄存器；公开参数全部使用DevKey物理标识与逻辑状态。
+
+业务任务中的调用示例（在已有任务上下文中使用，未新增报警任务）
+#include "dev_key.h"
+DevKey *key = GetKey(); // 已由App_Key_Start完成初始化的设备对象。
+DevKeyEvent event; // 本次取得的事件。
+DevKeyResult result = key->read(key, &event); // 非阻塞取得一条事件。
+if (result == DEV_KEY_OK) {
+    /* 当前由app_key扫描回调消费事件并调用显示APP；此示例仅说明接口，不应再竞争读取队列。 */
+} else if (result == DEV_KEY_OVERFLOW) {
+    /* 已有事件丢失；需要时查询get_state以恢复当前状态，再继续读取旧事件。 */
+} else if (result != DEV_KEY_NO_EVENT) {
+    /* 处理具名失败结果；失败时event内容不代表新事件。 */
+}
+
+队列与错误行为
+队列固定16条。满时丢弃新事件、保留已入队事件，状态机仍继续扫描。
+scan在该次发生丢失时返回OVERFLOW；read先报告一次累计丢失提示，不改写输出，后续read继续取旧事件。
+get_state给出最近消抖状态，用于同步当前按住状态，不是外部电路诊断或真实开关健康反馈。
+当前按键10ms扫描回调同时有界消费事件：SW6加1、SW4减1（最低为0）、SW5清零；仅PRESS触发，每次按住一次。没有另外创建事件消费任务，其他调用者不应竞争读取该队列。
+Device结果包括OK、NO_EVENT、INVALID_ARGUMENT、NOT_INITIALIZED、BOARD_ERROR、OVERFLOW。
+板级配置被其他模块覆盖或时钟失效，scan返回BOARD_ERROR；设备初始化失败时禁止继续依赖此设备。
+调试观察：port_key.c中的s_states/s_events/s_event_count；app_key.c中的s_last_scan_result/s_overflow_scan_count。
+
+保留与依据
+保留原RS485、继电器和数码管源码及构建分组；没有自动发数据、驱动继电器或扫描数码管。
+RS485仍引用HAL_GetTick，因此保留其HAL基础毫秒计时依赖；按键的GPIO/Port本身没有HAL依赖。
+CubeMX .ioc、生成main.c及其他生成配置未改动，也未执行重新生成。
+RM0008 Rev21 PDF第171/172页：CRL输入配置与IDR字访问；第95/100/103页：HSI、修调和总线分频；第177/184页：SWD与SWJ配置。
+SWJ_CFG只写，读值未定义：不得宣称该字段读回验证成功。固件明确写入010，并核对可读GPIO配置。
+正式引脚表注明PA13/PA14没有已确认外接调试连接；固件保留SWD不等于实板SWD连接已验证。
+
+软件验证
+正式Compiler5.06 update6/build750已编译、链接、生成HEX：0错误、0警告。
+Code=8856、RO-data=284、RW-data=192、ZI-data=6088字节；Flash载荷9332字节，RAM静态占用6280字节。
+首次构建的ARMCC内嵌汇编报错源于中断优先级宏C语言U后缀；只调整工程配置宏，FreeRTOS原件未改。
+编译通过不代表运行测试或硬件验证通过。软件测试未运行（未明确要求）；硬件未运行，由用户执行。
+这是整份新驱动；按规则待用户硬件验证通过后入库，目前不改驱动库、不写虚假更新日志。
+
+交接给用户的实板验证步骤
+1. 由用户确认三路外部上拉和低有效接法、实板版本及供电；自行使用SW/SWD连接和烧录。AI未烧录。
+2. 上电全部释放，观察s_last_scan_result为DEV_KEY_OK，消抖状态全部释放；确认软件定时器任务运行。
+3. 每次重新启动后分别短按SW6/SW4/SW5，核对对应PRESS/RELEASE/SHORT事件和GPIO映射。
+4. 每次重新启动后分别长按并继续保持，核对每次仅一条LONG，释放仅RELEASE，不额外SHORT。
+5. 多键同时按下/释放，检查每键独立；快速轻触和机械抖动不应出现多条有效短按。
+6. 通过业务消费者检查队列读取及错误处理；故意不读取直到满，检查溢出提示与get_state仍能返回当前状态。
+7. 返回上述结果、定时器任务栈余量和异常现象，再决定硬件验证通过与后续入库。
+
+当前接口与平台适配未取得用户硬件通过反馈，待实板验证。

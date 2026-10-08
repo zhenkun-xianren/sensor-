@@ -1,0 +1,19 @@
+# Keil generated output and dependency files
+/radar_system/MDK-ARM/radar_system/
+*.o
+*.d
+*.crf
+*.axf
+*.map
+*.lst
+*.lnp
+*.dep
+*.build_log.htm
+# Local IDE interface state
+*.uvguix.*
+ExtDll.iex
+# Editor and operating system caches
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

@@ -1,0 +1,40 @@
+三／四位数码管通用驱动（2026-10-07）
+
+统一配置：display_config.h默认DISPLAY_CONFIG_DIGIT_COUNT=4；雷达正式目标定义DISPLAY_CONFIG_DIGIT_COUNT=3。
+必须在所有调用Device及编译Port/BSP的编译单元使用同一配置。仅支持3、4，其他值编译报错。
+工程使用自身源码、头文件及说明，不依赖驱动库绝对路径。
+
+三位模式：FJ2352AH三位共阴，整数范围0～999，小数位0～2。
+整数通过showFixedPoint(self, value, 0, mode)调用；PAD显示000，SUPPRESS仅保留有效数字且至少保留个位。
+value=1、decimal_places=1：PAD显示00.1，SUPPRESS显示左空白的0.1。
+错误码三位显示E和末两位数字；数值1000或小数位3均提交E04并返回DEV_DISPLAY_OUT_OF_RANGE。
+未初始化、参数无效和板级失败均保留原有明确错误状态；帧在DIG1边界切换，stop立即关闭，内容更新恢复扫描。
+
+四位模式：默认值及原有接口保留；0～9999，最多3位小数，错误码左侧空白后显示E及末两位。
+三位模式条件屏蔽以下四位专用内容，源码保留：
+DevDisplayStatus (*showInteger4)(struct DevDisplay *self, uint16_t value);
+void PortDisplay_EncodeInteger4(uint16_t value, uint8_t frame[PORT_DISPLAY_DIGIT_COUNT]);
+static DevDisplayStatus display_show_integer4(DevDisplay *self, uint16_t value);
+DEV_DISPLAY_DIG4、PORT_DISPLAY_DIGIT_4_INDEX及对应方法绑定同条件屏蔽。
+恢复方法：使用四位硬件及对应BSP，在所有编译单元配置DISPLAY_CONFIG_DIGIT_COUNT=4并完整重新编译。
+不要只在雷达工程中改成4，雷达BSP编译期明确限制三位。
+
+雷达板BSP：仅修改11根所属GPIO，通用推挽2MHz，段选和NPN位选均高有效，预置低电平再启用输出。
+段线：A=PB11，B=PA6，C=PB0，D=PB10，E=PB12，F=PB2，G=PA7，DP=PB1。
+左、中、右位选：PA8、PA9、PA10。正式依据为硬件项目根目录引脚表V1.1。
+官方寄存器依据：ST RM0008 Rev21，GPIO CRL/CRH第171～172页、BSRR第173页。
+先关闭所有位选，更新GPIOA/B段线，最后启用指定一位；只写BSRR，不影响其他引脚。
+临界区保存并恢复PRIMASK；无动态内存申请；Port不依赖芯片、寄存器或FreeRTOS。
+
+后续调用顺序：板级基础初始化 → GetDisplay → init并检查返回值 → 一个周期源调用scanStep → Device更新内容。
+本次仅底层复制、适配和构建；未新增APP、扫描任务或启动调用。上电不会自动显示。
+普通周期扫描后续可用FreeRTOS软件定时器，建议1ms；该调度接入不在本次范围。
+现有CubeMX、时钟、HAL和启动流程保留；本任务未修改main.c或HAL_MspInit。
+实施期间其他任务已在HAL_MspInit的USER CODE区恢复SWD；此项不计为数码管任务修改，实物SWD连接仍待验证。
+
+验证：雷达正式目标radar_system，uVision5.25，ARM Compiler5.06 update6 build750，编译、链接、HEX生成0错误0警告。
+四位默认配置通用Port单独编译通过，0错误0警告；符号包含原四位整数接口，缓冲各4字节。
+三位正式编译对象不含四位整数实现，缓冲各3字节；无虚拟第四位。
+软件测试未运行；库参考BSP未单独编译；雷达及库参考硬件待用户验证；编译不表示显示已运行。
+原库未单列LICENSE文件，本次没有补造许可证或授权范围；原说明和源码完整复制保留在Device/reference/display_original。
+来源包：数码管/FJ5461AH_4位共阴_74AHCT245并行动态扫描（2026-10-05维护版，实施前快照及逐文件SHA-256见备份清单）。
