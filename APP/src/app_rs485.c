@@ -40,37 +40,63 @@ static void app_rs485_timer_callback(TimerHandle_t timer)
  (void)timer;
  xTaskNotifyGive(s_task);
 }
-/** @brief 独占完整查询事务，校验完成后发布距离，失败及时使旧测量失效。 @param argument 保留任务参数。 */
+/**
+ * @brief 把现有Modbus驱动结果映射为应用显示状态。
+ * @param result 设备契约返回的通信结果。
+ * @return 对应E码状态，成功返回正常状态，未知结果按底层错误处理。
+ */
+static AppRadarStatus app_rs485_display_status(DevModbusStatus result)
+{
+ switch (result) {
+ case DEV_MODBUS_OK: return APP_RADAR_OK;
+ case DEV_MODBUS_ERROR_TIMEOUT: return APP_RADAR_TIMEOUT;
+ case DEV_MODBUS_ERROR_CRC: return APP_RADAR_CRC_ERROR;
+ case DEV_MODBUS_ERROR_RESPONSE: return APP_RADAR_RESPONSE_ERROR;
+ case DEV_MODBUS_ERROR_EXCEPTION: return APP_RADAR_EXCEPTION;
+ case DEV_MODBUS_ERROR_IO: return APP_RADAR_IO_ERROR;
+ case DEV_MODBUS_ERROR_ARGUMENT: return APP_RADAR_ARGUMENT_ERROR;
+ case DEV_MODBUS_NOT_INITIALIZED: return APP_RADAR_NOT_INITIALIZED;
+ default: return APP_RADAR_IO_ERROR;
+ }
+}
+/**
+ * @brief 独占完整查询事务，发布明确错误或正常距离，失败及时使旧测量失效。
+ * @param argument 保留任务参数。
+ */
 static void app_rs485_send_task(void *argument)
 {
  uint16_t values[APP_RS485_REGISTER_COUNT]; // 四个保持寄存器的完整输出。
- bool valid; // 本次距离是否有效。
+ AppRadarStatus status; // 本次查询的通信或雷达工作状态。
  (void)argument;
  for (;;) {
      (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-     valid = false;
-     if (App_Settings_LockBus()) {
-         if (!s_device_ready) {
-             s_last_result = s_device->init(s_device);
-             s_device_ready = s_last_result == DEV_MODBUS_OK;
-         }
-         if (s_device_ready) {
-             s_last_result = s_device->readHoldingRegisters(s_device,
-                 APP_RS485_SLAVE_ADDRESS, APP_RS485_REGISTER_ADDRESS, APP_RS485_REGISTER_COUNT, values);
-             s_device_ready = s_last_result == DEV_MODBUS_OK;
-             if (s_last_result == DEV_MODBUS_OK) {
-                 s_radar_status = values[APP_RS485_STATUS_INDEX];
-                 s_radar_id = values[APP_RS485_ID_INDEX];
-                 s_radar_baud_code = values[APP_RS485_BAUD_INDEX];
-                 valid = s_radar_status == APP_RS485_NORMAL_STATUS;
-             }
-         }
-         App_Settings_UnlockBus();
+     /* 未取得总线时没有新事务，不发布旧错误或刷新时间，交由显示层判断E09。 */
+     if (!App_Settings_LockBus()) continue;
+     if (!s_device_ready) {
+         s_last_result = s_device->init(s_device);
+         s_device_ready = s_last_result == DEV_MODBUS_OK;
      }
-     App_Display_PublishDistance(valid ? values[APP_RS485_DISTANCE_INDEX] : APP_SETTINGS_MIN_MM, valid);
+     if (s_device_ready) {
+         s_last_result = s_device->readHoldingRegisters(s_device,
+             APP_RS485_SLAVE_ADDRESS, APP_RS485_REGISTER_ADDRESS, APP_RS485_REGISTER_COUNT, values);
+         s_device_ready = s_last_result == DEV_MODBUS_OK;
+         if (s_last_result == DEV_MODBUS_OK) {
+             s_radar_status = values[APP_RS485_STATUS_INDEX];
+             s_radar_id = values[APP_RS485_ID_INDEX];
+             s_radar_baud_code = values[APP_RS485_BAUD_INDEX];
+         }
+     }
+     App_Settings_UnlockBus();
+     status = app_rs485_display_status(s_last_result);
+     if (status == APP_RADAR_OK && s_radar_status != APP_RS485_NORMAL_STATUS)
+         status = APP_RADAR_STATUS_ERROR;
+     App_Display_PublishDistance(status == APP_RADAR_OK ? values[APP_RS485_DISTANCE_INDEX] : APP_SETTINGS_MIN_MM, status);
  }
 }
-/** @brief 创建静态查询任务和500毫秒通知源，调度开始即执行首次查询。 @return 启动结果。 */
+/**
+ * @brief 创建静态查询任务和500毫秒通知源，初始化失败时显示错误并由任务重试。
+ * @return 接口和静态资源就绪返回成功，缺失接口或任务及定时器失败返回对应错误。
+ */
 AppRs485Result App_Rs485_Start(void)
 {
  if (s_started) return APP_RS485_OK;
@@ -79,7 +105,8 @@ AppRs485Result App_Rs485_Start(void)
      return APP_RS485_DEVICE_ERROR;
  s_last_result = s_device->init(s_device);
  s_device_ready = s_last_result == DEV_MODBUS_OK;
- if (!s_device_ready) return APP_RS485_DEVICE_ERROR;
+ if (!s_device_ready)
+     App_Display_PublishDistance(APP_SETTINGS_MIN_MM, app_rs485_display_status(s_last_result));
  s_task = xTaskCreateStatic(app_rs485_send_task, "radar_read",
      APP_RS485_TASK_STACK_WORDS, NULL, APP_RS485_TASK_PRIORITY, s_task_stack, &s_task_storage);
  if (s_task == NULL) return APP_RS485_TASK_ERROR;
