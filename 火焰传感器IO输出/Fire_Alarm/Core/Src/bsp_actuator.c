@@ -1,0 +1,160 @@
+#include "bsp_actuator.h"
+#include "bsp_gpio_board.h"
+#include <stddef.h>
+
+/** @brief 用BSRR原子写单路锁存并核对ODR。
+ * @param gpio 已开时钟的端口。
+ * @param mask 所属引脚掩码。
+ * @param high 原始GPIO电平。
+ * @return 锁存符合请求返回OK，否则ERROR。 */
+static int actuator_write(GPIO_TypeDef *gpio, uint32_t mask, uint8_t high)
+{
+    uint32_t expected = high != BSP_GPIO_LEVEL_LOW ? mask : BSP_GPIO_FIELD_CLEAR; // 请求锁存值。
+    gpio->BSRR = high != BSP_GPIO_LEVEL_LOW ? mask : (mask << BSP_GPIO_BSRR_RESET_SHIFT);
+    return (gpio->ODR & mask) == expected ? BSP_GPIO_OK : BSP_GPIO_ERROR;
+}
+
+/** @brief GPIO初始化后确认光耦默认现场低电平，不重新配置引脚。
+ * @return 配置与锁存正常返回OK，否则ERROR。 */
+int BSP_Actuator_Init(void)
+{
+    uint32_t irq_state = __get_PRIMASK(); // 保存中断屏蔽状态。
+    int result; // 保存配置与锁存检查结果。
+    __disable_irq();
+    result = BSP_Gpio_CheckLocked();
+    BSP_Gpio_OffLocked();
+    if ((result == BSP_GPIO_OK) && ((GPIOA->ODR & BSP_GPIO_A_MASK) != BSP_GPIO_A_HIGH)) {
+        result = BSP_GPIO_ERROR;
+    }
+    if (result != BSP_GPIO_OK) {
+        BSP_Gpio_OffLocked();
+    }
+    __set_PRIMASK(irq_state);
+    return result;
+}
+
+/** @brief 控制本板光耦原始GPIO电平，异常尽力恢复默认锁存。
+ * @param channel 本板仅支持OPTOCOUPLER，其他通道返回参数错误。
+ * @param high LOW为PA8低，HIGH为PA8高；现场输出反相。
+ * @return 成功返回OK，参数或配置异常返回ERROR。 */
+int BSP_Actuator_Set(BspActuatorChannel channel, uint8_t high)
+{
+    uint32_t irq_state; // 保存中断屏蔽状态。
+    int result; // 保存配置与输出核对结果。
+    if ((high > BSP_GPIO_LEVEL_HIGH) || (channel != BSP_ACTUATOR_OPTOCOUPLER)) {
+        return BSP_GPIO_ERROR;
+    }
+    irq_state = __get_PRIMASK();
+    __disable_irq();
+    result = BSP_Gpio_CheckLocked();
+    if (result == BSP_GPIO_OK) {
+        result = actuator_write(GPIOA, BSP_GPIO_OPTO_MASK, high);
+    }
+    if (result != BSP_GPIO_OK) {
+        BSP_Gpio_OffLocked();
+    }
+    __set_PRIMASK(irq_state);
+    return result;
+}
+
+#if DEV_ACTUATOR_ENABLE_INDICATOR_LEDS
+/**
+ * @brief 在同一短临界区通过一次GPIOB的BSRR写入更新两灯。
+ * @param warning_high 报警灯GPIO电平，0熄灭，1点亮。
+ * @param power_high 电源灯GPIO电平，0熄灭，1点亮。
+ * @return 成功返回0，参数或板级失败返回-1；板级失败尽力关闭全部锁存。
+ */
+int BSP_Actuator_SetIndicatorLevels(uint8_t warning_high, uint8_t power_high)
+{
+    uint32_t irq_state; // 保存成对更新前中断屏蔽状态。
+    uint32_t expected; // 保存两灯目标锁存组合。
+    int result; // 保存配置和输出核对结果。
+    if (warning_high > 1U || power_high > 1U) return -1;
+    expected = ((uint32_t)warning_high << BSP_GPIO_WARNING_PIN) | ((uint32_t)power_high << BSP_GPIO_POWER_PIN);
+    irq_state = __get_PRIMASK();
+    __disable_irq();
+    result = BSP_Gpio_CheckLocked();
+    if (result == 0) {
+        GPIOB->BSRR = expected | ((BSP_GPIO_B_MASK & ~expected) << BSP_GPIO_BSRR_RESET_SHIFT);
+        if ((GPIOB->ODR & BSP_GPIO_B_MASK) != expected) result = -1;
+    }
+    if (result != 0) BSP_Gpio_OffLocked();
+    __set_PRIMASK(irq_state);
+    return result;
+}
+#endif /* DEV_ACTUATOR_ENABLE_INDICATOR_LEDS */
+
+#if DEV_ACTUATOR_ENABLE_STATE
+/**
+ * @brief 在配置正常时读取五路ODR快照，仅成功时更新输出对象。
+ * @param output 接收原始锁存电平的非空对象，不表示真实负载反馈。
+ * @return 成功返回0，参数或板级失败返回-1。
+ */
+int BSP_Actuator_Get(BspActuatorLevels *output)
+{
+    uint32_t irq_state; // 保存快照读取前中断屏蔽状态。
+    uint32_t output_a; // 保存GPIOA输出锁存快照。
+    uint32_t output_b; // 保存GPIOB输出锁存快照。
+    BspActuatorLevels levels; // 缓存五路原始锁存电平。
+    int result; // 保存配置检查结果。
+    if (output == NULL) return -1;
+    irq_state = __get_PRIMASK();
+    __disable_irq();
+    result = BSP_Gpio_CheckLocked();
+    if (result == 0) {
+        output_a = GPIOA->ODR;
+        output_b = GPIOB->ODR;
+        levels.relay = (uint8_t)((output_a >> BSP_GPIO_RELAY_PIN) & 1U);
+        levels.optocoupler = (uint8_t)((output_a >> BSP_GPIO_OPTO_PIN) & 1U);
+        levels.buzzer = (uint8_t)((output_a >> BSP_GPIO_BUZZER_PIN) & 1U);
+        levels.warningLed = (uint8_t)((output_b >> BSP_GPIO_WARNING_PIN) & 1U);
+        levels.powerLed = (uint8_t)((output_b >> BSP_GPIO_POWER_PIN) & 1U);
+        *output = levels;
+    }
+    __set_PRIMASK(irq_state);
+    return result;
+}
+#endif /* DEV_ACTUATOR_ENABLE_STATE */
+
+#if DEV_ACTUATOR_ENABLE_RELAY && DEV_ACTUATOR_ENABLE_LEGACY
+/**
+ * @brief 保留旧继电器逻辑入口，通过新版电平接口操作。
+ * @param enabled 零释放，非零吸合；该void入口不报告失败。
+ */
+void BSP_Actuator_SetRelay(uint8_t enabled)
+{
+    (void)BSP_Actuator_Set(BSP_ACTUATOR_RELAY, enabled != 0U ? BSP_GPIO_RELAY_ACTIVE : BSP_GPIO_RELAY_OFF);
+}
+#endif /* DEV_ACTUATOR_ENABLE_RELAY && DEV_ACTUATOR_ENABLE_LEGACY */
+#if DEV_ACTUATOR_ENABLE_OPTOCOUPLER && DEV_ACTUATOR_ENABLE_LEGACY
+/**
+ * @brief 保留旧光耦逻辑入口，现场输出与PA1电平反相。
+ * @param enabled 零请求现场低电平，非零请求现场高电平。
+ */
+void BSP_Actuator_SetOptocoupler(uint8_t enabled)
+{
+    (void)BSP_Actuator_Set(BSP_ACTUATOR_OPTOCOUPLER, enabled != 0U ? BSP_GPIO_OPTO_ACTIVE : BSP_GPIO_OPTO_OFF);
+}
+#endif /* DEV_ACTUATOR_ENABLE_OPTOCOUPLER && DEV_ACTUATOR_ENABLE_LEGACY */
+#if DEV_ACTUATOR_ENABLE_BUZZER && DEV_ACTUATOR_ENABLE_LEGACY
+/**
+ * @brief 保留旧蜂鸣器逻辑入口，通过新版电平接口操作。
+ * @param enabled 零关闭，非零开启。
+ */
+void BSP_Actuator_SetBuzzer(uint8_t enabled)
+{
+    (void)BSP_Actuator_Set(BSP_ACTUATOR_BUZZER, enabled != 0U ? BSP_GPIO_BUZZER_ACTIVE : BSP_GPIO_BUZZER_OFF);
+}
+#endif /* DEV_ACTUATOR_ENABLE_BUZZER && DEV_ACTUATOR_ENABLE_LEGACY */
+#if DEV_ACTUATOR_ENABLE_INDICATOR_LEDS && DEV_ACTUATOR_ENABLE_LEGACY
+/**
+ * @brief 保留旧两灯逻辑入口，通过新版电平接口成对更新。
+ * @param warning_enabled 零熄灭，非零点亮报警灯。
+ * @param power_enabled 零熄灭，非零点亮电源灯。
+ */
+void BSP_Actuator_SetIndicatorLeds(uint8_t warning_enabled, uint8_t power_enabled)
+{
+    (void)BSP_Actuator_SetIndicatorLevels(warning_enabled != 0U ? BSP_GPIO_WARNING_ACTIVE : BSP_GPIO_WARNING_OFF,
+        power_enabled != 0U ? BSP_GPIO_POWER_ACTIVE : BSP_GPIO_POWER_OFF);
+}
+#endif /* DEV_ACTUATOR_ENABLE_INDICATOR_LEDS && DEV_ACTUATOR_ENABLE_LEGACY */

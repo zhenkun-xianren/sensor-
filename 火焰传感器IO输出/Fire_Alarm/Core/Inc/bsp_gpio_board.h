@@ -1,0 +1,17 @@
+#ifndef BSP_GPIO_BOARD_H
+#define BSP_GPIO_BOARD_H
+#include "stm32f0xx.h"
+#include "bsp_gpio.h"
+/* GPIO依据RM0091 Rev10第158—163页，只修改PA8对应字段。 */
+#define BSP_GPIO_CLOCKS           RCC_AHBENR_GPIOAEN
+#define BSP_GPIO_A_MASK           GPIO_ODR_8
+#define BSP_GPIO_OPTO_MASK        BSP_GPIO_A_MASK
+#define BSP_GPIO_A_HIGH           BSP_GPIO_OPTO_MASK
+#define BSP_GPIO_A_FIELDS         GPIO_MODER_MODER8
+#define BSP_GPIO_A_MODES          GPIO_MODER_MODER8_0
+#define BSP_GPIO_OPTO_TYPE        GPIO_OTYPER_OT_8
+#define BSP_GPIO_OPTO_SPEED       GPIO_OSPEEDR_OSPEEDR8
+#define BSP_GPIO_OPTO_PULL        GPIO_PUPDR_PUPDR8
+#define BSP_GPIO_BSRR_RESET_SHIFT 16U
+#define BSP_GPIO_FIELD_CLEAR      0UL
+#endif
