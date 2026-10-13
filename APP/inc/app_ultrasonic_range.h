@@ -3,8 +3,8 @@
 
 #include "dev_ultrasonic_range.h"
 
-/* 当前只接收电路测试；改为false并重建可恢复原8周期反射测距。 */
-#define APP_ULTRASONIC_RANGE_RECEIVE_ONLY_TEST true
+/* 默认先发射8周期，再在消隐结束后接收回波；改为true并重建可切换持续只接收测试。 */
+#define APP_ULTRASONIC_RANGE_RECEIVE_ONLY_TEST false
 
 /* 首版可调测试参数：6m是测试上限，不是本板已经通过的性能指标。 */
 #define APP_ULTRASONIC_RANGE_BURST_CYCLES 8U
@@ -22,7 +22,31 @@
 #define APP_ULTRASONIC_RANGE_TASK_PRIORITY (tskIDLE_PRIORITY + 1U)
 #define APP_ULTRASONIC_RANGE_COMMAND_WAIT_TICKS 0U
 
-/** @brief 调试器实时结果；只接收看捕获数/最近周期/资格组，距离保持无效，sequence标识启动。 */
+/* 稳定输出只确认多轮一致的数据，不改变原始测距变量。 */
+#define APP_ULTRASONIC_RANGE_FILTER_SAMPLES 3U
+#define APP_ULTRASONIC_RANGE_FILTER_MEDIAN_INDEX (APP_ULTRASONIC_RANGE_FILTER_SAMPLES / 2U)
+#define APP_ULTRASONIC_RANGE_FILTER_MIN_TOLERANCE_MM 100UL
+#define APP_ULTRASONIC_RANGE_FILTER_RELATIVE_PERCENT 10UL
+#define APP_ULTRASONIC_RANGE_FILTER_PERCENT_SCALE 100UL
+#define APP_ULTRASONIC_RANGE_FILTER_EXPIRE_MS 500U
+
+/** @brief 多轮校验后的距离；valid为真才可使用，stale为真表示暂时保留旧结果。 */
+typedef struct {
+    uint32_t distance_mm; /**< 三点中值距离，单位mm；未确认、停止或过期时为0。 */
+    uint32_t age_ms; /**< 距最近一次可信更新的时间，单位ms；达到500ms时失效。 */
+    uint32_t sequence; /**< 最近一次可信更新对应的原始测量序号；不是当前进行中序号。 */
+    uint32_t pending_samples; /**< 当前一致候选样本数，范围0至3；3表示已经确认。 */
+    uint32_t accepted_updates; /**< 自上电累计可信更新次数，停止/重启保留，自然回绕。 */
+    uint32_t outlier_count; /**< 相邻有效距离超出一致性容差的累计次数，包含待重新确认的真实跳变。 */
+    uint32_t invalid_measurements; /**< 原始完成轮次中valid为假的累计次数，进行中不计入。 */
+    bool valid; /**< 真表示存在未过期的稳定距离；不证明捕获信号一定来自目标直接回波。 */
+    bool stale; /**< 真表示旧结果被暂时保留或已过期；结合valid和age_ms判断新旧。 */
+} AppUltrasonicRangeFilteredResult;
+
+/** @brief 稳定测距输出，原始g_ultrasonic_range_result及last_result保持原有语义。 */
+extern volatile AppUltrasonicRangeFilteredResult g_ultrasonic_range_filtered_result;
+
+/** @brief 调试器实时结果；测距结合valid和sequence查看距离，只接收时距离保持无效。 */
 extern volatile DevUltrasonicRangeResult g_ultrasonic_range_result;
 
 /** @brief 最近完成或失败的一轮结果；完成计数非零时可查看，sequence标识历史轮次。

@@ -6,6 +6,9 @@
     (BSP_ULTRASONIC_RANGE_PRESCALER > BSP_ULTRASONIC_RANGE_COUNTER_MAX)
 #error "TIM3 clock cannot produce the configured one-microsecond counter"
 #endif
+#if BSP_ULTRASONIC_RANGE_QUIET_US < BSP_ULTRASONIC_RANGE_RELEASE_GUARD_US
+#error "Receive quiet interval must cover the release guard"
+#endif
 
 static volatile bool s_gpio_owned = false; // 只清理本模块已取得的接收GPIO。
 static volatile bool s_timer_owned = false; // 只清理本模块已取得的TIM3。
@@ -18,6 +21,8 @@ static volatile uint32_t s_candidate_first; // 当前连续周期候选的首沿
 static volatile uint32_t s_candidate_last; // 当前候选最近一次边沿时间。
 static volatile uint32_t s_candidate_count; // 当前候选连续合格的边沿数。
 static volatile bool s_previous_capture_valid = false; // 当前计数窗口内是否已有前一边沿；回绕/覆盖后重新建立周期。
+static volatile bool s_waiting_for_quiet = false; // 测距首次候选须先经过无捕获沿间隔，纯只接收不等待。
+static volatile uint32_t s_last_activity_us; // 实际开放或最近捕获沿时刻，包含保护期间拒绝的沿。
 static DevUltrasonicRangeConfig s_config; // 初始化时复制的固定测量参数。
 static volatile DevUltrasonicRangeResult s_result; // ISR写入的原始结果，只在临界区复制。
 
@@ -25,7 +30,7 @@ static DevStatus bsp_ultrasonic_range_validate_config(const DevUltrasonicRangeCo
 static void bsp_ultrasonic_range_capture_edge(uint32_t capturedTimeUs);
 static void bsp_ultrasonic_range_finish(DevUltrasonicRangeState state, uint32_t echoTimeUs);
 
-/** @brief 检查计数覆盖、门限和发射消隐关系，拒绝无法实现的参数。
+/** @brief 检查计数覆盖、门限、发射消隐及首次回波静默间隔，拒绝无法实现的参数。
  * @param config 非空配置对象。
  * @return 合法DEV_OK，不合法DEV_ARGUMENT_ERROR。 */
 static DevStatus bsp_ultrasonic_range_validate_config(const DevUltrasonicRangeConfig *config)
@@ -46,7 +51,8 @@ static DevStatus bsp_ultrasonic_range_validate_config(const DevUltrasonicRangeCo
         config->listen_timeout_us > BSP_ULTRASONIC_RANGE_TIMEOUT_MAX_US ||
         config->blanking_us >= config->listen_timeout_us ||
         config->listen_timeout_us <= config->blanking_us +
-            BSP_ULTRASONIC_RANGE_PERIOD_MAX_US * BSP_ULTRASONIC_RANGE_REQUIRED_EDGES)
+            BSP_ULTRASONIC_RANGE_PERIOD_MAX_US * BSP_ULTRASONIC_RANGE_REQUIRED_EDGES +
+            (config->receive_only ? BSP_ULTRASONIC_RANGE_RESET_FIELDS : BSP_ULTRASONIC_RANGE_QUIET_US))
         return DEV_ARGUMENT_ERROR;
     return DEV_OK;
 }
@@ -244,6 +250,8 @@ DevStatus BSP_UltrasonicRange_StartMeasurement(void)
     s_result.valid = false;
     s_candidate_count = 0UL;
     s_previous_capture_valid = false;
+    s_waiting_for_quiet = !s_config.receive_only;
+    s_last_activity_us = s_config.blanking_us;
     s_listening = false;
     s_active = true;
     generation = ++s_generation;
@@ -310,7 +318,7 @@ DevStatus BSP_UltrasonicRange_ReadResult(DevUltrasonicRangeResult *result)
     return status;
 }
 
-/** @brief 先关发射，再取消捕获和同步触发，恢复接收钳位。
+/** @brief 先关发射，再取消静默等待、捕获和同步触发，恢复接收钳位。
  * @return 成功DEV_OK，未取得接收资源DEV_NOT_READY，关闭失败DEV_IO_ERROR。 */
 DevStatus BSP_UltrasonicRange_Stop(void)
 {
@@ -322,6 +330,7 @@ DevStatus BSP_UltrasonicRange_Stop(void)
     ++s_generation;
     s_active = false;
     s_listening = false;
+    s_waiting_for_quiet = false;
     s_previous_capture_valid = false;
     if (s_timer_owned) {
         NVIC_DisableIRQ(TIM3_IRQn);
@@ -355,7 +364,7 @@ DevStatus BSP_UltrasonicRange_Stop(void)
     return closed ? DEV_OK : DEV_IO_ERROR;
 }
 
-/** @brief 结束当前测量并恢复钳位，在已保护的线程或ISR调用。
+/** @brief 结束测量并撤销静默等待、恢复钳位，在已保护的线程或ISR调用。
  * @param state 本次完成状态。
  * @param echoTimeUs 合格首沿原始时间，无有效回波时为零。 */
 static void bsp_ultrasonic_range_finish(DevUltrasonicRangeState state, uint32_t echoTimeUs)
@@ -373,19 +382,35 @@ static void bsp_ultrasonic_range_finish(DevUltrasonicRangeState state, uint32_t 
     s_result.state = status == DEV_OK ? state : DEV_ULTRASONIC_RANGE_IO_ERROR;
     s_result.valid = false; /* Port完成校正和范围检查后才提供有效距离。 */
     s_listening = false;
+    s_waiting_for_quiet = false;
     __DMB();
     s_active = false;
 }
 
-/** @brief 测距接受消隐后回波；只接收累计所有边沿和40kHz资格组，保持连续接收。
+/** @brief 测距先等残振结束后的静默再接受新回波；只接收保留所有周期资格。
  * @param capturedTimeUs 本次CCR1捕获计数，单位us；只接收每次回绕后重建周期。 */
 static void bsp_ultrasonic_range_capture_edge(uint32_t capturedTimeUs)
 {
-    uint32_t period; // 相邻捕获上升沿间隔。
+    uint32_t period; // 相邻候选上升沿间隔，用于原有40kHz资格。
+    uint32_t quiet_us; // 距实际开放或最近真实捕获沿的间隔，用于首次回波静默确认。
     if (!s_active || !s_listening) return;
     if (!s_config.receive_only && (capturedTimeUs < s_config.blanking_us ||
         capturedTimeUs >= s_config.listen_timeout_us)) return;
     ++s_result.captured_edges;
+    if (!s_config.receive_only) {
+        quiet_us = capturedTimeUs >= s_last_activity_us ? capturedTimeUs - s_last_activity_us : 0UL;
+        if (capturedTimeUs >= s_last_activity_us) s_last_activity_us = capturedTimeUs;
+        if (capturedTimeUs - s_config.blanking_us < BSP_ULTRASONIC_RANGE_RELEASE_GUARD_US ||
+            (s_waiting_for_quiet && quiet_us < BSP_ULTRASONIC_RANGE_QUIET_US)) {
+            /* 保护内也更新真实活动时刻：连续残振越过100us边界仍不能成为新回波。 */
+            ++s_result.rejected_edges;
+            s_candidate_count = 0UL;
+            s_previous_capture_valid = false;
+            s_result.last_period_us = 0UL;
+            return;
+        }
+        s_waiting_for_quiet = false; /* 静默后的首沿仍须通过原有连续周期资格。 */
+    }
     /* 同次IRQ的CCR可能属于回绕前，下一沿计数更小时再重建，避免无符号减法产生假长周期。 */
     if (s_config.receive_only && s_previous_capture_valid && capturedTimeUs < s_candidate_last) {
         s_result.rejected_edges += s_candidate_count;
@@ -415,7 +440,7 @@ static void bsp_ultrasonic_range_capture_edge(uint32_t capturedTimeUs)
     }
 }
 
-/** @brief 测距处理窗口截止；只接收持续处理捕获、计数回绕和覆盖，不关闭接收。 */
+/** @brief 建立实际接收开放时刻并处理窗口；只接收持续处理捕获、回绕和覆盖。 */
 void TIM3_IRQHandler(void)
 {
     uint32_t flags; // 本次处理前的硬件状态快照。
@@ -471,6 +496,8 @@ void TIM3_IRQHandler(void)
         TIM3->DIER &= ~TIM_DIER_CC2IE;
         TIM3->SR = BSP_ULTRASONIC_RANGE_STATUS_MASK & ~(TIM_SR_CC2IF | TIM_SR_CC1IF | TIM_SR_CC1OF);
         s_listening = true;
+        s_waiting_for_quiet = true;
+        s_last_activity_us = TIM3->CNT; /* 用实际开放时刻作静默起点，不假定IRQ恰在3000us执行。 */
         TIM3->CCER = TIM_CCER_CC1E; /* 上升沿捕获；无需GPIO定时器输入脚。 */
         TIM3->DIER |= TIM_DIER_CC1IE;
         GPIOC->BSRR = BSP_ULTRASONIC_RANGE_C_RECEIVE_ON;

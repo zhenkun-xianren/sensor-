@@ -1,7 +1,7 @@
 #ifndef APP_MAIN_H
 #define APP_MAIN_H
 
-/* 默认启动接收/测距模块，模式由app_ultrasonic_range.h选择；置0恢复连续发射参考。 */
+/* 默认第1路先发射再接收测距，参数见app_ultrasonic_range.h；置0切换连续发射。 */
 #define APP_MAIN_ENABLE_ULTRASONIC_RANGE_TEST 1
 
 /** @brief APP 总启动接口返回的失败原因；正常调度不会返回。 */
