@@ -1,0 +1,18 @@
+#ifndef CMB_USER_CFG_H
+#define CMB_USER_CFG_H
+#include "bsp_backtrace.h"
+
+#define CMB_USING_OS_PLATFORM
+#define CMB_OS_PLATFORM_TYPE CMB_OS_PLATFORM_FREERTOS
+#define CMB_CPU_PLATFORM_TYPE CMB_CPU_ARM_CORTEX_M0
+#define CMB_PRINT_LANGUAGE CMB_PRINT_LANGUAGE_ENGLISH
+#define CMB_USING_DUMP_STACK_INFO
+#define CMB_DUMP_STACK_DEPTH_SIZE BSP_BACKTRACE_DUMP_WORDS
+#define CMB_CALL_STACK_MAX_DEPTH BSP_BACKTRACE_CALL_DEPTH
+#define CMB_CSTACK_BLOCK_NAME STACK
+#define CMB_CODE_SECTION_NAME ER_IROM1
+#define cmb_println(...) BSP_Backtrace_Println(__VA_ARGS__)
+
+/* OS选项只用于选择PSP和冻结的栈元数据；三个vTask适配函数由BSP提供，
+ * 不调用FreeRTOS API，也不要求在tasks.c添加查询函数。 */
+#endif

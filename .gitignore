@@ -1,0 +1,14 @@
+# Keil重新生成的编译输出和个人界面配置
+Ultrasonic_Ranging_Program/MDK-ARM/Ultrasonic_Ranging_Program/
+Ultrasonic_Ranging_Program/MDK-ARM/Objects/
+Ultrasonic_Ranging_Program/MDK-ARM/Listings/
+*.o
+*.d
+*.crf
+*.lst
+*.uvguix.*
+*.bak
+*.log
+*.lock
+.vscode/
+# Firmware/保存此次归档的现有HEX、AXF和构建记录。
