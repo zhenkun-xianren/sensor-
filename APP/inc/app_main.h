@@ -1,7 +1,8 @@
 #ifndef APP_MAIN_H
 #define APP_MAIN_H
 
-/* 默认第1路先发射再接收测距，参数见app_ultrasonic_range.h；置0切换连续发射。 */
+/* 默认第1路先发后收测反射距离，4ms开门、基准线连续3个下降沿确认并保留原滤波。
+ * 收发通道分别由bsp_ultrasonic_tx.h和bsp_ultrasonic_range.h选择；合格距离循环历史供Watch观察。 */
 #define APP_MAIN_ENABLE_ULTRASONIC_RANGE_TEST 1
 
 /** @brief APP 总启动接口返回的失败原因；正常调度不会返回。 */

@@ -3,15 +3,24 @@
 
 #include "dev_ultrasonic_range.h"
 
-/* 默认先发射8周期，再在消隐结束后接收回波；改为true并重建可切换持续只接收测试。 */
+/* 第1路先发后收测反射距离：4～60ms开门，100us保护及首次200us静默后检查连续3个下降沿。
+ * 按名义1.65V基准线比较，连续同极性沿间隔20～30us；保留原滤波及其他通道关闭配置。
+ * 距离按假定声速及往返时间除以2换算，不计算风速。 */
+#define APP_ULTRASONIC_RANGE_HOLD_CLAMP_TEST false
+/* false为第1路先发射再延时接收；true为持续只接收。 */
 #define APP_ULTRASONIC_RANGE_RECEIVE_ONLY_TEST false
 
-/* 首版可调测试参数：6m是测试上限，不是本板已经通过的性能指标。 */
+/* 可调测试参数：2m为有效距离上限，超限丢弃；不代表本板已验证的性能。 */
 #define APP_ULTRASONIC_RANGE_BURST_CYCLES 8U
-#define APP_ULTRASONIC_RANGE_THRESHOLD_CODE 2172U
-#define APP_ULTRASONIC_RANGE_BLANKING_US 3000UL
-#define APP_ULTRASONIC_RANGE_TIMEOUT_US 40000UL
-#define APP_ULTRASONIC_RANGE_MAX_DISTANCE_MM 6000UL
+/* 名义VDDA=3.3V，2048/4095*3.3约1.6504V；比较约1.65V基准线，不自动跟踪。 */
+#define APP_ULTRASONIC_RANGE_THRESHOLD_CODE 2048U
+/* 从发射起点4ms开门，保留100us保护；多沿模式首次静默200us，无干扰时约4.2ms可取首候选。 */
+#define APP_ULTRASONIC_RANGE_BLANKING_US 4000UL
+/* 截止保持60ms；换算后仅接受不超过2000mm的距离，不因窗口更长而放宽上限。 */
+#define APP_ULTRASONIC_RANGE_TIMEOUT_US 60000UL
+/* 近端候选被忽略后继续等待远端回波，避免仅屏蔽最终显示值。 */
+#define APP_ULTRASONIC_RANGE_MIN_DISTANCE_MM 500UL
+#define APP_ULTRASONIC_RANGE_MAX_DISTANCE_MM 2000UL
 #define APP_ULTRASONIC_RANGE_SOUND_SPEED_MM_S 343000UL
 #define APP_ULTRASONIC_RANGE_TIME_OFFSET_US 0L
 #define APP_ULTRASONIC_RANGE_PERIOD_MS 100U
@@ -21,6 +30,9 @@
 #define APP_ULTRASONIC_RANGE_STACK_WORDS 256U
 #define APP_ULTRASONIC_RANGE_TASK_PRIORITY (tskIDLE_PRIORITY + 1U)
 #define APP_ULTRASONIC_RANGE_COMMAND_WAIT_TICKS 0U
+
+/* 每轮合格毫米距离的循环历史，满后覆盖最旧项；容量为128项。 */
+#define APP_ULTRASONIC_RANGE_VALID_BUFFER_CAPACITY 128UL
 
 /* 稳定输出只确认多轮一致的数据，不改变原始测距变量。 */
 #define APP_ULTRASONIC_RANGE_FILTER_SAMPLES 3U
@@ -56,10 +68,16 @@ extern volatile DevUltrasonicRangeResult g_ultrasonic_range_last_result;
 extern volatile uint32_t g_ultrasonic_range_completed_count;
 /** @brief 自上电累计valid为真的完成次数，自然回绕。 */
 extern volatile uint32_t g_ultrasonic_range_valid_count;
+/** @brief 只读Watch循环历史；仅记录新完成轮次的合格distance_mm，单位mm，写满覆盖最旧项。 */
+extern volatile uint32_t g_ultrasonic_range_valid_buffer[APP_ULTRASONIC_RANGE_VALID_BUFFER_CAPACITY];
+/** @brief 下一写入索引，范围0至容量减1；缓冲区满时也指向最旧项，停止/重启测量保留。 */
+extern volatile uint32_t g_ultrasonic_range_valid_buffer_next_index;
+/** @brief 缓冲区有效项数，0至容量；满后保持容量，MCU复位后清零。 */
+extern volatile uint32_t g_ultrasonic_range_valid_buffer_count;
 /** @brief 自上电累计无合格回波的截止次数，自然回绕。 */
 extern volatile uint32_t g_ultrasonic_range_no_echo_count;
 
-/** @brief 显式初始化设备并建立静态查询任务；测距模式才建立周期通知，只接收持续运行。
+/** @brief 显式初始化设备；钳位测试仅发布初始结果，正常模式建立查询任务及所需周期通知。
  * @return 成功DEV_OK，资源建立失败DEV_IO_ERROR，其他返回设备原错误。 */
 DevStatus APP_UltrasonicRange_Start(void);
 

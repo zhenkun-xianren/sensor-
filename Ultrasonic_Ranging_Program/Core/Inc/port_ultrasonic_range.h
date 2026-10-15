@@ -3,7 +3,10 @@
 
 #include "dev_ultrasonic_range.h"
 
-/* 单程距离换算为往返时间的一半；使用64位中间值避免乘法溢出。 */
-#define PORT_ULTRASONIC_RANGE_ROUND_TRIP_SCALE 2000000ULL
+/* 根据公共传播程数换算路径长度；使用64位中间值避免乘法溢出。 */
+#define PORT_ULTRASONIC_RANGE_TIME_SCALE (DEV_ULTRASONIC_RANGE_PATH_LEGS * 1000000ULL)
+#if (DEV_ULTRASONIC_RANGE_PATH_LEGS != 1ULL) && (DEV_ULTRASONIC_RANGE_PATH_LEGS != 2ULL)
+#error "Ultrasonic path legs must be one-way or round-trip"
+#endif
 
 #endif

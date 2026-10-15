@@ -12,12 +12,16 @@ static const DevUltrasonicRangeConfig s_config = {
     APP_ULTRASONIC_RANGE_MAX_DISTANCE_MM,
     APP_ULTRASONIC_RANGE_SOUND_SPEED_MM_S,
     APP_ULTRASONIC_RANGE_TIME_OFFSET_US,
-    APP_ULTRASONIC_RANGE_RECEIVE_ONLY_TEST
+    APP_ULTRASONIC_RANGE_RECEIVE_ONLY_TEST,
+    APP_ULTRASONIC_RANGE_MIN_DISTANCE_MM
 }; // 第1路首版参数集中定义，调门限或消隐后需重新构建验证。
 volatile DevUltrasonicRangeResult g_ultrasonic_range_result = {0}; // APP发布的最新距离及有效状态。
 volatile DevUltrasonicRangeResult g_ultrasonic_range_last_result = {0}; // 保存最近完成的一轮；新测量、停止和重启不覆盖历史记录。
 volatile uint32_t g_ultrasonic_range_completed_count; // 自上电累计完成或失败的测量次数，零表示尚无完成记录。
 volatile uint32_t g_ultrasonic_range_valid_count; // 自上电累计取得有效距离的测量次数。
+volatile uint32_t g_ultrasonic_range_valid_buffer[APP_ULTRASONIC_RANGE_VALID_BUFFER_CAPACITY] = {0}; // 合格毫米距离循环历史，数组值需结合有效数量读取。
+volatile uint32_t g_ultrasonic_range_valid_buffer_next_index; // 下一写入位置，满后覆盖最旧项；只由发布函数更新。
+volatile uint32_t g_ultrasonic_range_valid_buffer_count; // 已保存的有效项数，上限为数组容量，测量停止/重启不清除。
 volatile uint32_t g_ultrasonic_range_no_echo_count; // 自上电累计接收截止仍无合格回波的测量次数。
 volatile AppUltrasonicRangeFilteredResult g_ultrasonic_range_filtered_result = {0}; // 保存稳定距离、有效期和筛选统计，供APP或Watch读取。
 static uint32_t s_filter_samples[APP_ULTRASONIC_RANGE_FILTER_SAMPLES]; // 当前一致候选簇的最近三个有效距离。
@@ -40,7 +44,7 @@ static void ultrasonic_range_task(void *argument);
 static void ultrasonic_range_timer_callback(TimerHandle_t timer);
 static void app_ultrasonic_range_publish(const DevUltrasonicRangeResult *result);
 
-/** @brief 保留原始快照，按轮次统计，并发布三点一致性中值和有限有效期。
+/** @brief 保留原始快照，将新合格距离写入循环历史，并发布距离中值和有效期。
  * @param result 要发布的非空完整原始结果；不把稳定结果写回原始距离。 */
 static void app_ultrasonic_range_publish(const DevUltrasonicRangeResult *result)
 {
@@ -66,8 +70,17 @@ static void app_ultrasonic_range_publish(const DevUltrasonicRangeResult *result)
     if (new_completed) {
         g_ultrasonic_range_last_result = *result;
         ++g_ultrasonic_range_completed_count;
-        if (result->valid) ++g_ultrasonic_range_valid_count;
-        else ++g_ultrasonic_range_filtered_result.invalid_measurements;
+        if (result->valid) {
+            ++g_ultrasonic_range_valid_count;
+            /* 只保存新完成的合格轮次；当前设备已排除大于2000mm的结果。
+             * 临界区内先写数据再发布索引/数量，满后自然覆盖最旧项。 */
+            g_ultrasonic_range_valid_buffer[g_ultrasonic_range_valid_buffer_next_index] = result->distance_mm;
+            ++g_ultrasonic_range_valid_buffer_next_index;
+            if (g_ultrasonic_range_valid_buffer_next_index >= APP_ULTRASONIC_RANGE_VALID_BUFFER_CAPACITY)
+                g_ultrasonic_range_valid_buffer_next_index = 0UL;
+            if (g_ultrasonic_range_valid_buffer_count < APP_ULTRASONIC_RANGE_VALID_BUFFER_CAPACITY)
+                ++g_ultrasonic_range_valid_buffer_count;
+        } else ++g_ultrasonic_range_filtered_result.invalid_measurements;
         if (result->state == DEV_ULTRASONIC_RANGE_NO_ECHO) ++g_ultrasonic_range_no_echo_count;
     }
     if (s_config.receive_only || result->state == DEV_ULTRASONIC_RANGE_IDLE ||
@@ -247,7 +260,7 @@ static void ultrasonic_range_task(void *argument)
     }
 }
 
-/** @brief 显式初始化设备并清除稳定输出候选，复用静态任务及测距周期通知。
+/** @brief 显式初始化并清除候选；关门测试保持初始化钳位，其他模式建立任务和所需通知。
  * @return 成功DEV_OK，资源/命令失败DEV_IO_ERROR，其他返回设备原错误。 */
 DevStatus APP_UltrasonicRange_Start(void)
 {
@@ -262,42 +275,59 @@ DevStatus APP_UltrasonicRange_Start(void)
     status = device->init(device, &s_config);
     if (status != DEV_OK) return status;
     s_device = device;
-    /* 新建对象前已完成设备配置；重复启动只重用原静态存储。 */
-    if (s_task == NULL) {
-        s_task = xTaskCreateStatic(ultrasonic_range_task, "ultrasonic", APP_ULTRASONIC_RANGE_STACK_WORDS,
-                                  NULL, APP_ULTRASONIC_RANGE_TASK_PRIORITY, s_task_stack, &s_task_storage);
+    if (APP_ULTRASONIC_RANGE_HOLD_CLAMP_TEST) {
+        /* 初始化已关闭全部发射并钳位接收；此处禁止创建任务或通知，保持PA4高。
+         * COMP2/DAC已配置，示波器可观察PA3；捕获未启动，计数和距离保持无效。 */
+        status = device->readResult(device, &result);
+        if (status != DEV_OK) {
+            (void)device->stop(device);
+            return status;
+        }
+        result.distance_mm = 0UL;
+        result.valid = false;
+        taskENTER_CRITICAL();
+        ++s_generation;
+        app_ultrasonic_range_publish(&result);
+        taskEXIT_CRITICAL();
+        return DEV_OK;
+    } else {
+        /* 新建对象前已完成设备配置；重复启动只重用原静态存储。 */
         if (s_task == NULL) {
+            s_task = xTaskCreateStatic(ultrasonic_range_task, "ultrasonic", APP_ULTRASONIC_RANGE_STACK_WORDS,
+                                      NULL, APP_ULTRASONIC_RANGE_TASK_PRIORITY, s_task_stack, &s_task_storage);
+            if (s_task == NULL) {
+                (void)device->stop(device);
+                return DEV_IO_ERROR;
+            }
+        }
+        if (!s_config.receive_only && s_timer == NULL) {
+            s_timer = xTimerCreateStatic("ultrasonic_timer", period_ticks, pdTRUE, NULL,
+                                        ultrasonic_range_timer_callback, &s_timer_storage);
+            if (s_timer == NULL) {
+                (void)device->stop(device);
+                return DEV_IO_ERROR;
+            }
+        }
+        status = device->readResult(device, &result);
+        if (status != DEV_OK) {
             (void)device->stop(device);
+            return status;
+        }
+        result.distance_mm = 0UL;
+        result.valid = false;
+        taskENTER_CRITICAL();
+        ++s_generation;
+        s_enabled = true;
+        app_ultrasonic_range_publish(&result); /* 初始化或停止态清除筛选历史，原始完成记录仍保留。 */
+        taskEXIT_CRITICAL();
+        /* 启动前零等待入队；回调本身只通知任务，驱动唤醒在任务中执行。 */
+        if (!s_config.receive_only && xTimerStart(s_timer, APP_ULTRASONIC_RANGE_COMMAND_WAIT_TICKS) != pdPASS) {
+            (void)APP_UltrasonicRange_Stop();
             return DEV_IO_ERROR;
         }
+        xTaskNotifyGive(s_task); /* 首次测量或持续接收由任务在调度器内执行。 */
+        return DEV_OK;
     }
-    if (!s_config.receive_only && s_timer == NULL) {
-        s_timer = xTimerCreateStatic("ultrasonic_timer", period_ticks, pdTRUE, NULL,
-                                    ultrasonic_range_timer_callback, &s_timer_storage);
-        if (s_timer == NULL) {
-            (void)device->stop(device);
-            return DEV_IO_ERROR;
-        }
-    }
-    status = device->readResult(device, &result);
-    if (status != DEV_OK) {
-        (void)device->stop(device);
-        return status;
-    }
-    result.distance_mm = 0UL;
-    result.valid = false;
-    taskENTER_CRITICAL();
-    ++s_generation;
-    s_enabled = true;
-    app_ultrasonic_range_publish(&result); /* 初始化或停止态清除筛选历史，原始完成记录仍保留。 */
-    taskEXIT_CRITICAL();
-    /* 启动前零等待入队；回调本身只通知任务，驱动唤醒在任务中执行。 */
-    if (!s_config.receive_only && xTimerStart(s_timer, APP_ULTRASONIC_RANGE_COMMAND_WAIT_TICKS) != pdPASS) {
-        (void)APP_UltrasonicRange_Stop();
-        return DEV_IO_ERROR;
-    }
-    xTaskNotifyGive(s_task); /* 首次测量或持续接收由任务在调度器内执行。 */
-    return DEV_OK;
 }
 
 /** @brief 先禁止新测量并撤销稳定距离，再停止周期通知和设备；重复停止保持无效。

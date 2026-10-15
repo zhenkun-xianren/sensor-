@@ -10,9 +10,11 @@
 #error "Receive quiet interval must cover the release guard"
 #endif
 
+volatile BspUltrasonicRangeGateDebug g_bsp_ultrasonic_range_gate_debug = {0}; // 累计诊断不因每轮测量清零。
+
 static volatile bool s_gpio_owned = false; // 只清理本模块已取得的接收GPIO。
 static volatile bool s_timer_owned = false; // 只清理本模块已取得的TIM3。
-static bool s_analog_owned = false; // 记录DAC1通道1与COMP1均未被其他模块占用。
+static bool s_analog_owned = false; // 记录DAC1通道1与所选内部比较器均未被其他模块占用。
 static volatile bool s_initialized = false; // 初始化读回成功后才允许开始测量。
 static volatile bool s_active = false; // 本次测量仍在唤醒、消隐或等待回波。
 static volatile bool s_listening = false; // 已经过消隐、放开接收且开启捕获。
@@ -21,8 +23,9 @@ static volatile uint32_t s_candidate_first; // 当前连续周期候选的首沿
 static volatile uint32_t s_candidate_last; // 当前候选最近一次边沿时间。
 static volatile uint32_t s_candidate_count; // 当前候选连续合格的边沿数。
 static volatile bool s_previous_capture_valid = false; // 当前计数窗口内是否已有前一边沿；回绕/覆盖后重新建立周期。
-static volatile bool s_waiting_for_quiet = false; // 测距首次候选须先经过无捕获沿间隔，纯只接收不等待。
+static volatile bool s_waiting_for_quiet = false; // 多沿测距首次候选等待静默，单沿和只接收不应用。
 static volatile uint32_t s_last_activity_us; // 实际开放或最近捕获沿时刻，包含保护期间拒绝的沿。
+static uint32_t s_minimum_echo_us; // 初始化时推导距离下限对应的原始传播时间，捕获IRQ仅比较。
 static DevUltrasonicRangeConfig s_config; // 初始化时复制的固定测量参数。
 static volatile DevUltrasonicRangeResult s_result; // ISR写入的原始结果，只在临界区复制。
 
@@ -42,6 +45,7 @@ static DevStatus bsp_ultrasonic_range_validate_config(const DevUltrasonicRangeCo
         config->threshold_code < BSP_ULTRASONIC_RANGE_DAC_MIN_CODE ||
         config->threshold_code > BSP_ULTRASONIC_RANGE_DAC_MAX_CODE ||
         config->max_distance_mm == 0UL || config->max_distance_mm > BSP_ULTRASONIC_RANGE_DISTANCE_MAX_MM ||
+        config->min_distance_mm > config->max_distance_mm ||
         config->sound_speed_mm_s < BSP_ULTRASONIC_RANGE_SOUND_MIN_MM_S ||
         config->sound_speed_mm_s > BSP_ULTRASONIC_RANGE_SOUND_MAX_MM_S ||
         config->time_offset_us < -BSP_ULTRASONIC_RANGE_OFFSET_LIMIT_US ||
@@ -57,7 +61,7 @@ static DevStatus bsp_ultrasonic_range_validate_config(const DevUltrasonicRangeCo
     return DEV_OK;
 }
 
-/** @brief 取得第1路接收、内部门限和TIM3资源，保留其他模块字段。
+/** @brief 取得独立选择的接收通道、内部门限和TIM3资源，保留其他模块字段。
  * @param config 非空、范围合法的测距参数。
  * @return 成功DEV_OK，参数错误DEV_ARGUMENT_ERROR，资源或读回失败DEV_IO_ERROR。 */
 DevStatus BSP_UltrasonicRange_Init(const DevUltrasonicRangeConfig *config)
@@ -65,13 +69,18 @@ DevStatus BSP_UltrasonicRange_Init(const DevUltrasonicRangeConfig *config)
     uint32_t irq_state; // 保留调用者的中断屏蔽状态。
     DevStatus status; // 保存参数和发射初始化结果。
     bool configured; // 累计GPIO、模拟及定时器读回结果。
+    int64_t minimum_echo_us; // 向上取整并加偏置，与Port扣除偏置的距离换算保持一致。
     status = bsp_ultrasonic_range_validate_config(config);
     if (status != DEV_OK) return status;
+    minimum_echo_us = (int64_t)(((uint64_t)config->min_distance_mm * BSP_ULTRASONIC_RANGE_TIME_SCALE +
+        config->sound_speed_mm_s - 1UL) / config->sound_speed_mm_s) + config->time_offset_us;
+    if (!config->receive_only && minimum_echo_us >= (int64_t)config->listen_timeout_us) return DEV_ARGUMENT_ERROR;
     if (s_initialized) {
         /* 不允许重新初始化暗中改变正在测量的配置。 */
         return config->burst_cycles == s_config.burst_cycles && config->threshold_code == s_config.threshold_code &&
             config->blanking_us == s_config.blanking_us && config->listen_timeout_us == s_config.listen_timeout_us &&
-            config->max_distance_mm == s_config.max_distance_mm && config->sound_speed_mm_s == s_config.sound_speed_mm_s &&
+            config->max_distance_mm == s_config.max_distance_mm && config->min_distance_mm == s_config.min_distance_mm &&
+            config->sound_speed_mm_s == s_config.sound_speed_mm_s &&
             config->time_offset_us == s_config.time_offset_us &&
             config->receive_only == s_config.receive_only ? DEV_OK : DEV_ARGUMENT_ERROR;
     }
@@ -86,7 +95,7 @@ DevStatus BSP_UltrasonicRange_Init(const DevUltrasonicRangeConfig *config)
     (void)RCC->APBENR2;
     /* COMP/DAC是共享资源，不复位整块SYSCFG/DAC，也不抢占已启用的通道。 */
     if (((RCC->APBENR1 & RCC_APBENR1_TIM3EN) != BSP_ULTRASONIC_RANGE_RESET_FIELDS && !s_timer_owned) ||
-        (!s_analog_owned && (COMP1->CSR & (COMP_CSR_EN | COMP_CSR_LOCK)) != BSP_ULTRASONIC_RANGE_RESET_FIELDS) ||
+        (!s_analog_owned && (BSP_ULTRASONIC_RANGE_COMP->CSR & (COMP_CSR_EN | COMP_CSR_LOCK)) != BSP_ULTRASONIC_RANGE_RESET_FIELDS) ||
         (!s_analog_owned && (RCC->APBENR1 & RCC_APBENR1_DAC1EN) != BSP_ULTRASONIC_RANGE_RESET_FIELDS &&
             (DAC1->CR & BSP_ULTRASONIC_RANGE_DAC_CONTROL_MASK) != BSP_ULTRASONIC_RANGE_RESET_FIELDS)) {
         __set_PRIMASK(irq_state);
@@ -128,7 +137,7 @@ DevStatus BSP_UltrasonicRange_Init(const DevUltrasonicRangeConfig *config)
     DAC1->MCR = (DAC1->MCR & ~DAC_MCR_MODE1) | BSP_ULTRASONIC_RANGE_DAC_INTERNAL_MODE;
     DAC1->DHR12R1 = config->threshold_code;
     DAC1->CR |= DAC_CR_EN1;
-    COMP1->CSR = BSP_ULTRASONIC_RANGE_COMP_CONFIG;
+    BSP_ULTRASONIC_RANGE_COMP->CSR = BSP_ULTRASONIC_RANGE_COMP_CONFIG;
     RCC->APBRSTR1 |= RCC_APBRSTR1_TIM3RST;
     RCC->APBRSTR1 &= ~RCC_APBRSTR1_TIM3RST;
     TIM3->CR1 = BSP_ULTRASONIC_RANGE_RESET_FIELDS;
@@ -137,7 +146,7 @@ DevStatus BSP_UltrasonicRange_Init(const DevUltrasonicRangeConfig *config)
     TIM3->CCMR1 = BSP_ULTRASONIC_RANGE_TIMER_INPUT;
     TIM3->CCMR2 = BSP_ULTRASONIC_RANGE_RESET_FIELDS;
     TIM3->CCER = BSP_ULTRASONIC_RANGE_RESET_FIELDS;
-    TIM3->TISEL = TIM_TISEL_TI1SEL_0;
+    TIM3->TISEL = BSP_ULTRASONIC_RANGE_TIMER_SELECTION;
     TIM3->DIER = BSP_ULTRASONIC_RANGE_RESET_FIELDS;
     TIM3->EGR = TIM_EGR_UG;
     TIM3->SR = BSP_ULTRASONIC_RANGE_RESET_FIELDS;
@@ -155,13 +164,21 @@ DevStatus BSP_UltrasonicRange_Init(const DevUltrasonicRangeConfig *config)
         (DAC1->MCR & DAC_MCR_MODE1) == BSP_ULTRASONIC_RANGE_DAC_INTERNAL_MODE &&
         (DAC1->CR & BSP_ULTRASONIC_RANGE_DAC_CONTROL_MASK) == DAC_CR_EN1 &&
         DAC1->DHR12R1 == config->threshold_code &&
-        (COMP1->CSR & ~COMP_CSR_VALUE) == BSP_ULTRASONIC_RANGE_COMP_CONFIG &&
+        (BSP_ULTRASONIC_RANGE_COMP->CSR & ~COMP_CSR_VALUE) == BSP_ULTRASONIC_RANGE_COMP_CONFIG &&
         TIM3->PSC == BSP_ULTRASONIC_RANGE_PRESCALER && TIM3->ARR == BSP_ULTRASONIC_RANGE_COUNTER_MAX &&
-        TIM3->TISEL == TIM_TISEL_TI1SEL_0 && TIM3->CCMR1 == BSP_ULTRASONIC_RANGE_TIMER_INPUT &&
+        TIM3->TISEL == BSP_ULTRASONIC_RANGE_TIMER_SELECTION && TIM3->CCMR1 == BSP_ULTRASONIC_RANGE_TIMER_INPUT &&
         TIM3->CR1 == BSP_ULTRASONIC_RANGE_RESET_FIELDS;
+    g_bsp_ultrasonic_range_gate_debug.close_odr = BSP_ULTRASONIC_RANGE_RECEIVE_GPIO->ODR;
+    g_bsp_ultrasonic_range_gate_debug.close_idr = BSP_ULTRASONIC_RANGE_RECEIVE_GPIO->IDR;
+    g_bsp_ultrasonic_range_gate_debug.last_close_us = 0UL;
+    if ((g_bsp_ultrasonic_range_gate_debug.close_odr & BSP_ULTRASONIC_RANGE_SELECTED_CLAMP_MASK) ==
+            BSP_ULTRASONIC_RANGE_SELECTED_CLAMP_MASK) ++g_bsp_ultrasonic_range_gate_debug.close_count;
+    else ++g_bsp_ultrasonic_range_gate_debug.close_readback_failed_count;
     s_initialized = configured;
     if (configured) {
         s_config = *config;
+        s_minimum_echo_us = minimum_echo_us > 0 ? (uint32_t)minimum_echo_us : 0UL;
+        g_bsp_ultrasonic_range_gate_debug.minimum_echo_us = s_minimum_echo_us;
         s_result.state = DEV_ULTRASONIC_RANGE_IDLE;
         s_result.valid = false;
     } else (void)BSP_UltrasonicRange_Stop();
@@ -192,11 +209,11 @@ DevStatus BSP_UltrasonicRange_StartMeasurement(void)
     }
     if ((RCC->IOPENR & BSP_ULTRASONIC_RANGE_GPIO_CLOCKS) != BSP_ULTRASONIC_RANGE_GPIO_CLOCKS ||
         (RCC->APBENR1 & (RCC_APBENR1_DAC1EN | RCC_APBENR1_TIM3EN)) != (RCC_APBENR1_DAC1EN | RCC_APBENR1_TIM3EN) ||
-        (COMP1->CSR & ~COMP_CSR_VALUE) != BSP_ULTRASONIC_RANGE_COMP_CONFIG ||
+        (BSP_ULTRASONIC_RANGE_COMP->CSR & ~COMP_CSR_VALUE) != BSP_ULTRASONIC_RANGE_COMP_CONFIG ||
         (DAC1->CR & BSP_ULTRASONIC_RANGE_DAC_CONTROL_MASK) != DAC_CR_EN1 ||
         (DAC1->MCR & DAC_MCR_MODE1) != BSP_ULTRASONIC_RANGE_DAC_INTERNAL_MODE ||
         DAC1->DHR12R1 != s_config.threshold_code ||
-        TIM3->PSC != BSP_ULTRASONIC_RANGE_PRESCALER || TIM3->TISEL != TIM_TISEL_TI1SEL_0 ||
+        TIM3->PSC != BSP_ULTRASONIC_RANGE_PRESCALER || TIM3->TISEL != BSP_ULTRASONIC_RANGE_TIMER_SELECTION ||
         TIM3->CCMR1 != BSP_ULTRASONIC_RANGE_TIMER_INPUT) {
         (void)BSP_UltrasonicRange_Stop();
         s_result.state = DEV_ULTRASONIC_RANGE_IO_ERROR;
@@ -210,13 +227,29 @@ DevStatus BSP_UltrasonicRange_StartMeasurement(void)
         __set_PRIMASK(irq_state);
         return status;
     }
-    GPIOC->BSRR = BSP_ULTRASONIC_RANGE_C_CLAMP_ON;
+    BSP_ULTRASONIC_RANGE_RECEIVE_GPIO->BSRR = BSP_ULTRASONIC_RANGE_SELECTED_CLAMP_ON;
+    __DSB();
+    g_bsp_ultrasonic_range_gate_debug.close_odr = BSP_ULTRASONIC_RANGE_RECEIVE_GPIO->ODR;
+    g_bsp_ultrasonic_range_gate_debug.close_idr = BSP_ULTRASONIC_RANGE_RECEIVE_GPIO->IDR;
+    g_bsp_ultrasonic_range_gate_debug.last_close_us = TIM3->CNT;
+    g_bsp_ultrasonic_range_gate_debug.tx_irq_count_before_start = g_bsp_ultrasonic_tx_debug.irq_count;
+    if ((g_bsp_ultrasonic_range_gate_debug.close_odr & BSP_ULTRASONIC_RANGE_SELECTED_CLAMP_MASK) !=
+            BSP_ULTRASONIC_RANGE_SELECTED_CLAMP_MASK ||
+        (BSP_ULTRASONIC_RANGE_RECEIVE_GPIO->MODER & BSP_ULTRASONIC_RANGE_SELECTED_MODE_MASK) !=
+            BSP_ULTRASONIC_RANGE_SELECTED_MODE_OUTPUT) {
+        ++g_bsp_ultrasonic_range_gate_debug.close_readback_failed_count;
+        (void)BSP_UltrasonicRange_Stop();
+        s_result.state = DEV_ULTRASONIC_RANGE_IO_ERROR;
+        __set_PRIMASK(irq_state);
+        return DEV_IO_ERROR;
+    }
+    ++g_bsp_ultrasonic_range_gate_debug.close_count;
     TIM3->CR1 = BSP_ULTRASONIC_RANGE_RESET_FIELDS;
     TIM3->SMCR = BSP_ULTRASONIC_RANGE_RESET_FIELDS;
     TIM3->DIER = BSP_ULTRASONIC_RANGE_RESET_FIELDS;
     TIM3->CCER = BSP_ULTRASONIC_RANGE_RESET_FIELDS;
     TIM3->ARR = BSP_ULTRASONIC_RANGE_COUNTER_MAX;
-    TIM3->CCR2 = s_config.blanking_us;
+    TIM3->BSP_ULTRASONIC_RANGE_BLANKING_CCR = s_config.blanking_us;
     TIM3->CCR3 = s_config.listen_timeout_us;
     TIM3->SR = BSP_ULTRASONIC_RANGE_RESET_FIELDS;
     TIM3->EGR = TIM_EGR_UG;
@@ -259,18 +292,18 @@ DevStatus BSP_UltrasonicRange_StartMeasurement(void)
         /* 内部时钟自由运行，关闭从模式；没有发射触发、消隐或40ms截止。 */
         TIM3->SMCR = BSP_ULTRASONIC_RANGE_RESET_FIELDS;
         TIM3->DIER = BSP_ULTRASONIC_RANGE_TIMER_RECEIVE_IRQS;
-        TIM3->CCER = TIM_CCER_CC1E;
+        TIM3->CCER = BSP_ULTRASONIC_RANGE_CAPTURE_CONFIG;
         s_listening = true;
         s_result.state = DEV_ULTRASONIC_RANGE_LISTENING;
         NVIC_EnableIRQ(TIM3_IRQn);
         TIM3->CR1 = TIM_CR1_CEN;
-        GPIOC->BSRR = BSP_ULTRASONIC_RANGE_C_RECEIVE_ON;
+        BSP_ULTRASONIC_RANGE_RECEIVE_GPIO->BSRR = BSP_ULTRASONIC_RANGE_SELECTED_RECEIVE_ON;
         __DSB();
         if ((TIM3->CR1 & TIM_CR1_CEN) == BSP_ULTRASONIC_RANGE_RESET_FIELDS ||
             TIM3->SMCR != BSP_ULTRASONIC_RANGE_RESET_FIELDS ||
             TIM3->DIER != BSP_ULTRASONIC_RANGE_TIMER_RECEIVE_IRQS ||
-            TIM3->CCER != TIM_CCER_CC1E ||
-            (GPIOC->ODR & BSP_ULTRASONIC_RANGE_C_CLAMP_MASK) != BSP_ULTRASONIC_RANGE_RESET_FIELDS) {
+            TIM3->CCER != BSP_ULTRASONIC_RANGE_CAPTURE_CONFIG ||
+            (BSP_ULTRASONIC_RANGE_RECEIVE_GPIO->ODR & BSP_ULTRASONIC_RANGE_SELECTED_CLAMP_MASK) != BSP_ULTRASONIC_RANGE_RESET_FIELDS) {
             (void)BSP_UltrasonicRange_Stop();
             s_result.state = DEV_ULTRASONIC_RANGE_IO_ERROR;
             __set_PRIMASK(irq_state);
@@ -376,8 +409,19 @@ static void bsp_ultrasonic_range_finish(DevUltrasonicRangeState state, uint32_t 
     TIM3->SMCR = BSP_ULTRASONIC_RANGE_RESET_FIELDS;
     TIM3->CR1 &= ~TIM_CR1_CEN;
     TIM3->SR = BSP_ULTRASONIC_RANGE_RESET_FIELDS;
-    GPIOC->BSRR = BSP_ULTRASONIC_RANGE_C_CLAMP_ON;
+    BSP_ULTRASONIC_RANGE_RECEIVE_GPIO->BSRR = BSP_ULTRASONIC_RANGE_SELECTED_CLAMP_ON;
     status = BSP_UltrasonicTx_Stop();
+    __DSB();
+    g_bsp_ultrasonic_range_gate_debug.close_odr = BSP_ULTRASONIC_RANGE_RECEIVE_GPIO->ODR;
+    g_bsp_ultrasonic_range_gate_debug.close_idr = BSP_ULTRASONIC_RANGE_RECEIVE_GPIO->IDR;
+    g_bsp_ultrasonic_range_gate_debug.last_close_us = TIM3->CNT;
+    if ((g_bsp_ultrasonic_range_gate_debug.close_odr & BSP_ULTRASONIC_RANGE_SELECTED_CLAMP_MASK) !=
+            BSP_ULTRASONIC_RANGE_SELECTED_CLAMP_MASK ||
+        (BSP_ULTRASONIC_RANGE_RECEIVE_GPIO->MODER & BSP_ULTRASONIC_RANGE_SELECTED_MODE_MASK) !=
+            BSP_ULTRASONIC_RANGE_SELECTED_MODE_OUTPUT) {
+        ++g_bsp_ultrasonic_range_gate_debug.close_readback_failed_count;
+        status = DEV_IO_ERROR;
+    } else ++g_bsp_ultrasonic_range_gate_debug.close_count;
     s_result.echo_time_us = echoTimeUs;
     s_result.state = status == DEV_OK ? state : DEV_ULTRASONIC_RANGE_IO_ERROR;
     s_result.valid = false; /* Port完成校正和范围检查后才提供有效距离。 */
@@ -387,29 +431,45 @@ static void bsp_ultrasonic_range_finish(DevUltrasonicRangeState state, uint32_t 
     s_active = false;
 }
 
-/** @brief 测距先等残振结束后的静默再接受新回波；只接收保留所有周期资格。
- * @param capturedTimeUs 本次CCR1捕获计数，单位us；只接收每次回绕后重建周期。 */
+/** @brief 按配置检查下降沿；当前连续三沿结合静默及周期资格确认，传播计时保留首沿。
+ * @param capturedTimeUs 本次所选CCR捕获计数，单位us；只接收每次回绕后重建周期。 */
 static void bsp_ultrasonic_range_capture_edge(uint32_t capturedTimeUs)
 {
-    uint32_t period; // 相邻候选上升沿间隔，用于原有40kHz资格。
-    uint32_t quiet_us; // 距实际开放或最近真实捕获沿的间隔，用于首次回波静默确认。
+    uint32_t period; // 相邻候选下降沿间隔；单沿首沿即合格，间隔记录为零。
+#if BSP_ULTRASONIC_RANGE_REQUIRED_EDGES > BSP_ULTRASONIC_RANGE_FIRST_EDGE_COUNT
+    uint32_t quiet_us; // 多沿模式距实际开放或最近捕获沿间隔，用于首次回波静默确认。
+#endif
     if (!s_active || !s_listening) return;
     if (!s_config.receive_only && (capturedTimeUs < s_config.blanking_us ||
         capturedTimeUs >= s_config.listen_timeout_us)) return;
     ++s_result.captured_edges;
     if (!s_config.receive_only) {
+#if BSP_ULTRASONIC_RANGE_REQUIRED_EDGES > BSP_ULTRASONIC_RANGE_FIRST_EDGE_COUNT
         quiet_us = capturedTimeUs >= s_last_activity_us ? capturedTimeUs - s_last_activity_us : 0UL;
         if (capturedTimeUs >= s_last_activity_us) s_last_activity_us = capturedTimeUs;
         if (capturedTimeUs - s_config.blanking_us < BSP_ULTRASONIC_RANGE_RELEASE_GUARD_US ||
             (s_waiting_for_quiet && quiet_us < BSP_ULTRASONIC_RANGE_QUIET_US)) {
-            /* 保护内也更新真实活动时刻：连续残振越过100us边界仍不能成为新回波。 */
+#else
+        /* s_last_activity_us在单沿模式保持实际开门时间，不被保护内的沿推迟。 */
+        if (capturedTimeUs < s_last_activity_us ||
+            capturedTimeUs - s_last_activity_us < BSP_ULTRASONIC_RANGE_RELEASE_GUARD_US) {
+#endif
+            /* 多沿模式仍拒绝连续残振；单沿模式仅屏蔽实际开门后的开关瞬态。 */
             ++s_result.rejected_edges;
             s_candidate_count = 0UL;
             s_previous_capture_valid = false;
             s_result.last_period_us = 0UL;
             return;
         }
-        s_waiting_for_quiet = false; /* 静默后的首沿仍须通过原有连续周期资格。 */
+        s_waiting_for_quiet = false; /* 单沿首沿即可，或继续执行多沿模式的周期资格。 */
+        if (capturedTimeUs < s_minimum_echo_us) {
+            /* 已开门观察信号，但近端不参与候选，也不结束本轮，继续等待更远的回波。 */
+            ++s_result.rejected_edges;
+            s_candidate_count = 0UL;
+            s_previous_capture_valid = false;
+            s_result.last_period_us = 0UL;
+            return;
+        }
     }
     /* 同次IRQ的CCR可能属于回绕前，下一沿计数更小时再重建，避免无符号减法产生假长周期。 */
     if (s_config.receive_only && s_previous_capture_valid && capturedTimeUs < s_candidate_last) {
@@ -444,7 +504,7 @@ static void bsp_ultrasonic_range_capture_edge(uint32_t capturedTimeUs)
 void TIM3_IRQHandler(void)
 {
     uint32_t flags; // 本次处理前的硬件状态快照。
-    uint32_t captured_us; // 通过CCR1获得的边沿时间，读取也清除CC1IF。
+    uint32_t captured_us; // 通过所选CCR获得边沿时间，读取同时清除对应捕获标志。
     if (!s_timer_owned || (RCC->APBENR1 & RCC_APBENR1_TIM3EN) == BSP_ULTRASONIC_RANGE_RESET_FIELDS) {
         NVIC_DisableIRQ(TIM3_IRQn);
         return;
@@ -455,8 +515,8 @@ void TIM3_IRQHandler(void)
         return;
     }
     if (s_config.receive_only) {
-        /* SR为rc_w0；只清本次已记录的回绕/覆盖位，保留新到来的CC1IF。 */
-        TIM3->SR = BSP_ULTRASONIC_RANGE_STATUS_MASK & ~(flags & (TIM_SR_UIF | TIM_SR_CC1OF));
+        /* SR为rc_w0；只清本次已记录的回绕/覆盖位，保留新到来的捕获标志。 */
+        TIM3->SR = BSP_ULTRASONIC_RANGE_STATUS_MASK & ~(flags & (TIM_SR_UIF | BSP_ULTRASONIC_RANGE_CAPTURE_OVERFLOW_FLAG));
         if ((flags & TIM_SR_UIF) != BSP_ULTRASONIC_RANGE_RESET_FIELDS) {
             ++s_result.timer_wrap_count;
             s_result.rejected_edges += s_candidate_count;
@@ -464,47 +524,74 @@ void TIM3_IRQHandler(void)
             s_previous_capture_valid = false;
             s_result.last_period_us = 0UL;
         }
-        if ((flags & TIM_SR_CC1OF) != BSP_ULTRASONIC_RANGE_RESET_FIELDS) {
+        if ((flags & BSP_ULTRASONIC_RANGE_CAPTURE_OVERFLOW_FLAG) != BSP_ULTRASONIC_RANGE_RESET_FIELDS) {
             ++s_result.overflow_count;
             s_result.rejected_edges += s_candidate_count;
             s_candidate_count = 0UL;
             s_previous_capture_valid = false;
             s_result.last_period_us = 0UL;
         }
-        if ((flags & TIM_SR_CC1IF) != BSP_ULTRASONIC_RANGE_RESET_FIELDS) {
-            captured_us = TIM3->CCR1;
-            if ((TIM3->SR & TIM_SR_CC1OF) != BSP_ULTRASONIC_RANGE_RESET_FIELDS) {
+        if ((flags & BSP_ULTRASONIC_RANGE_CAPTURE_FLAG) != BSP_ULTRASONIC_RANGE_RESET_FIELDS) {
+            captured_us = TIM3->BSP_ULTRASONIC_RANGE_CAPTURE_CCR;
+            if ((TIM3->SR & BSP_ULTRASONIC_RANGE_CAPTURE_OVERFLOW_FLAG) != BSP_ULTRASONIC_RANGE_RESET_FIELDS) {
                 ++s_result.overflow_count;
                 s_result.rejected_edges += s_candidate_count;
                 s_candidate_count = 0UL;
                 s_previous_capture_valid = false;
                 s_result.last_period_us = 0UL;
-                TIM3->SR = BSP_ULTRASONIC_RANGE_STATUS_MASK & ~TIM_SR_CC1OF;
+                TIM3->SR = BSP_ULTRASONIC_RANGE_STATUS_MASK & ~BSP_ULTRASONIC_RANGE_CAPTURE_OVERFLOW_FLAG;
             }
             bsp_ultrasonic_range_capture_edge(captured_us);
         }
         return;
     }
-    if ((flags & (TIM_SR_UIF | TIM_SR_CC1OF)) != BSP_ULTRASONIC_RANGE_RESET_FIELDS) {
+    if ((flags & (TIM_SR_UIF | BSP_ULTRASONIC_RANGE_CAPTURE_OVERFLOW_FLAG)) != BSP_ULTRASONIC_RANGE_RESET_FIELDS) {
         ++s_result.overflow_count;
         bsp_ultrasonic_range_finish(DEV_ULTRASONIC_RANGE_CAPTURE_OVERFLOW, 0UL);
         return;
     }
     /* 截止已经到达时不再因迟到的消隐IRQ打开接收。 */
-    if ((flags & TIM_SR_CC2IF) != BSP_ULTRASONIC_RANGE_RESET_FIELDS && !s_listening &&
+    if ((flags & BSP_ULTRASONIC_RANGE_BLANKING_FLAG) != BSP_ULTRASONIC_RANGE_RESET_FIELDS && !s_listening &&
         TIM3->CNT < s_config.listen_timeout_us) {
-        TIM3->DIER &= ~TIM_DIER_CC2IE;
-        TIM3->SR = BSP_ULTRASONIC_RANGE_STATUS_MASK & ~(TIM_SR_CC2IF | TIM_SR_CC1IF | TIM_SR_CC1OF);
-        s_listening = true;
+        TIM3->DIER &= ~BSP_ULTRASONIC_RANGE_BLANKING_IRQ;
+        TIM3->SR = BSP_ULTRASONIC_RANGE_STATUS_MASK & ~(BSP_ULTRASONIC_RANGE_BLANKING_FLAG | BSP_ULTRASONIC_RANGE_CAPTURE_FLAG | BSP_ULTRASONIC_RANGE_CAPTURE_OVERFLOW_FLAG);
+        /* TX结束IRQ优先级更高且会重新钳位；必须先确认它已完成硬件关闭。
+         * 读回异常仅证明控制状态异常，不把此前零捕获直接归因为该路径。 */
+        if ((TIM1->CR1 & TIM_CR1_CEN) != BSP_ULTRASONIC_RANGE_RESET_FIELDS ||
+            (TIM1->BDTR & TIM_BDTR_MOE) != BSP_ULTRASONIC_RANGE_RESET_FIELDS ||
+            (GPIOA->ODR & BSP_ULTRASONIC_TX_GATE_A_MASK) != BSP_ULTRASONIC_RANGE_RESET_FIELDS ||
+            (GPIOB->ODR & (BSP_ULTRASONIC_TX_GATE_B_MASK | BSP_ULTRASONIC_TX_SLEEP_MASK)) != BSP_ULTRASONIC_RANGE_RESET_FIELDS ||
+            (GPIOC->ODR & BSP_ULTRASONIC_TX_GATE_C_MASK) != BSP_ULTRASONIC_RANGE_RESET_FIELDS) {
+            ++g_bsp_ultrasonic_range_gate_debug.tx_not_stopped_count;
+            bsp_ultrasonic_range_finish(DEV_ULTRASONIC_RANGE_IO_ERROR, 0UL);
+            return;
+        }
+        TIM3->CCER = BSP_ULTRASONIC_RANGE_CAPTURE_CONFIG; /* 先准备捕获，再释放模拟钳位。 */
+        TIM3->DIER |= BSP_ULTRASONIC_RANGE_CAPTURE_IRQ;
+        BSP_ULTRASONIC_RANGE_RECEIVE_GPIO->BSRR = BSP_ULTRASONIC_RANGE_SELECTED_RECEIVE_ON;
+        __DSB();
+        s_last_activity_us = TIM3->CNT; /* GPIO写入之后记录静默起点，适用于可调消隐值。 */
+        g_bsp_ultrasonic_range_gate_debug.last_open_us = s_last_activity_us;
+        g_bsp_ultrasonic_range_gate_debug.open_odr = BSP_ULTRASONIC_RANGE_RECEIVE_GPIO->ODR;
+        g_bsp_ultrasonic_range_gate_debug.open_idr = BSP_ULTRASONIC_RANGE_RECEIVE_GPIO->IDR;
+        g_bsp_ultrasonic_range_gate_debug.tx_irq_count_at_open = g_bsp_ultrasonic_tx_debug.irq_count;
+        g_bsp_ultrasonic_range_gate_debug.tx_end_us_at_open = g_bsp_ultrasonic_tx_debug.last_irq_tim3_us;
+        g_bsp_ultrasonic_range_gate_debug.tx_end_time_valid_at_open = g_bsp_ultrasonic_tx_debug.tim3_time_valid;
+        if ((g_bsp_ultrasonic_range_gate_debug.open_odr & BSP_ULTRASONIC_RANGE_SELECTED_CLAMP_MASK) != BSP_ULTRASONIC_RANGE_RESET_FIELDS ||
+            (BSP_ULTRASONIC_RANGE_RECEIVE_GPIO->MODER & BSP_ULTRASONIC_RANGE_SELECTED_MODE_MASK) != BSP_ULTRASONIC_RANGE_SELECTED_MODE_OUTPUT ||
+            TIM3->CCER != BSP_ULTRASONIC_RANGE_CAPTURE_CONFIG ||
+            (TIM3->DIER & BSP_ULTRASONIC_RANGE_CAPTURE_IRQ) == BSP_ULTRASONIC_RANGE_RESET_FIELDS) {
+            ++g_bsp_ultrasonic_range_gate_debug.open_readback_failed_count;
+            bsp_ultrasonic_range_finish(DEV_ULTRASONIC_RANGE_IO_ERROR, 0UL);
+            return;
+        }
+        ++g_bsp_ultrasonic_range_gate_debug.open_count;
         s_waiting_for_quiet = true;
-        s_last_activity_us = TIM3->CNT; /* 用实际开放时刻作静默起点，不假定IRQ恰在3000us执行。 */
-        TIM3->CCER = TIM_CCER_CC1E; /* 上升沿捕获；无需GPIO定时器输入脚。 */
-        TIM3->DIER |= TIM_DIER_CC1IE;
-        GPIOC->BSRR = BSP_ULTRASONIC_RANGE_C_RECEIVE_ON;
+        s_listening = true;
     }
-    if ((flags & TIM_SR_CC1IF) != BSP_ULTRASONIC_RANGE_RESET_FIELDS && s_listening) {
-        captured_us = TIM3->CCR1; /* 读SR后读CCR1清CC1IF；不RMW状态寄存器。 */
-        if ((TIM3->SR & TIM_SR_CC1OF) != BSP_ULTRASONIC_RANGE_RESET_FIELDS) {
+    if ((flags & BSP_ULTRASONIC_RANGE_CAPTURE_FLAG) != BSP_ULTRASONIC_RANGE_RESET_FIELDS && s_listening) {
+        captured_us = TIM3->BSP_ULTRASONIC_RANGE_CAPTURE_CCR; /* 读SR后读所选CCR清捕获标志；不RMW状态寄存器。 */
+        if ((TIM3->SR & BSP_ULTRASONIC_RANGE_CAPTURE_OVERFLOW_FLAG) != BSP_ULTRASONIC_RANGE_RESET_FIELDS) {
             ++s_result.overflow_count;
             bsp_ultrasonic_range_finish(DEV_ULTRASONIC_RANGE_CAPTURE_OVERFLOW, 0UL);
             return;
